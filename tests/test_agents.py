@@ -60,6 +60,39 @@ def test_codex_adapter_uses_current_exec_flags(tmp_path):
     assert prepared.command[4:8] == ["-c", 'approval_policy="never"', "--sandbox", "read-only"]
 
 
+def test_claude_adapter_uses_tools_flag_for_read_only_access(tmp_path):
+    node = NodeSpec.model_validate(
+        {
+            "id": "review",
+            "agent": "claude",
+            "prompt": "Review",
+        }
+    )
+
+    prepared = ClaudeAdapter().prepare(node, "Review", _paths(tmp_path))
+
+    assert "--allowedTools" not in prepared.command
+    index = prepared.command.index("--tools")
+    assert prepared.command[index + 1] == "Read,Glob,Grep,LS,NotebookRead,Task,TaskOutput,TodoRead,WebFetch,WebSearch"
+
+
+def test_claude_adapter_uses_tools_flag_for_read_write_access(tmp_path):
+    node = NodeSpec.model_validate(
+        {
+            "id": "implement",
+            "agent": "claude",
+            "prompt": "Implement",
+            "tools": "read_write",
+        }
+    )
+
+    prepared = ClaudeAdapter().prepare(node, "Implement", _paths(tmp_path))
+
+    index = prepared.command.index("--tools")
+    assert "Bash" in prepared.command[index + 1].split(",")
+    assert "Write" in prepared.command[index + 1].split(",")
+
+
 def test_claude_adapter_supports_kimi_provider_alias(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-kimi-secret")
     node = NodeSpec.model_validate(

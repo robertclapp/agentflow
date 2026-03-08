@@ -49,7 +49,7 @@ class ClaudeAdapter(AgentAdapter):
         if node.model:
             command.extend(["--model", node.model])
         allowed_tools = _CLAUDE_READ_ONLY_TOOLS if node.tools == ToolAccess.READ_ONLY else _CLAUDE_READ_WRITE_TOOLS
-        command.extend(["--allowedTools", ",".join(allowed_tools)])
+        command.extend(["--tools", ",".join(allowed_tools)])
         runtime_files: dict[str, str] = {}
         if node.mcps:
             mcp_payload: dict[str, object] = {"mcpServers": {}}

@@ -171,7 +171,7 @@ Invokes `agentflow.remote.lambda_handler.handler`. The payload contains the prep
 ### Claude
 
 - Uses `claude -p ... --output-format stream-json --verbose`
-- Passes `--allowedTools` according to the read-only vs read-write policy
+- Passes `--tools` according to the read-only vs read-write policy
 - Writes a per-node MCP JSON config and passes it with `--mcp-config`
 
 ### Kimi
