@@ -16,6 +16,13 @@ def test_claude_trace_parser_extracts_result():
     assert parser.finalize() == "working\ndone"
 
 
+def test_claude_trace_parser_dedupes_matching_result():
+    parser = create_trace_parser(AgentKind.CLAUDE, "implement")
+    parser.feed('{"type":"assistant","message":{"content":[{"type":"text","text":"working"}]}}')
+    parser.feed('{"type":"result","result":"working"}')
+    assert parser.finalize() == "working"
+
+
 def test_kimi_trace_parser_extracts_text_part():
     parser = create_trace_parser(AgentKind.KIMI, "review")
     parser.feed('{"jsonrpc":"2.0","method":"event","params":{"type":"ContentPart","payload":{"type":"text","text":"kimi trace"}}}')

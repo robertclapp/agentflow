@@ -144,7 +144,8 @@ class ClaudeTraceParser(BaseTraceParser):
             self.remember(text)
             events.append(self.emit("assistant_message", "Assistant message", text, payload))
         elif event_type in {"result", "final"}:
-            self.remember(text)
+            if text and text != self.last_message:
+                self.remember(text)
             events.append(self.emit("result", "Result", text, payload))
         elif event_type in {"tool_use", "tool_result"}:
             title = f"{event_type.replace('_', ' ').title()}"

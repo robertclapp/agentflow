@@ -95,7 +95,7 @@ async def test_orchestrator_runs_parallel_and_templates_outputs(tmp_path: Path):
     gamma = completed.nodes["gamma"]
     assert completed.status.value == "completed"
     assert alpha.output == "alpha"
-    assert beta.output == "beta\nbeta"
+    assert beta.output == "beta"
     assert "alpha" in gamma.output
     assert "beta" in gamma.output
     alpha_start = datetime.fromisoformat(alpha.started_at)
