@@ -99,8 +99,8 @@ agentflow doctor
 ```
 
 `agentflow doctor` prints JSON by default so CI and wrapper scripts can parse it directly. Use `agentflow doctor --output summary` when you want a quick human-readable checklist instead.
-Those JSON checks also include per-check `context` when AgentFlow can explain a machine-readable cause, such as the node id and resolved values behind a `launch_env_override` warning.
-For the bundled smoke pipeline and custom local Kimi-bootstrapped Codex/Claude/Kimi DAGs, Doctor now also warns when the current shell exports conflicting launch values such as `ANTHROPIC_BASE_URL` that a node will replace at launch, and it carries the same source hint into the human summary and JSON context.
+Those JSON checks also include per-check `context` when AgentFlow can explain a machine-readable cause, such as the node id and resolved values behind a `launch_env_override` report.
+For the bundled smoke pipeline and custom local Kimi-bootstrapped Codex/Claude/Kimi DAGs, Doctor now also reports when the current shell exports conflicting launch values such as `ANTHROPIC_BASE_URL` that a node will replace at launch, and it carries the same source hint into the human summary and JSON context. Overrides that come directly from explicit pipeline configuration such as `node.env`, `provider.env`, or `provider.base_url` stay informational in Doctor so the preflight does not go yellow for an intentional mixed-provider setup.
 
 You can also point Doctor at a custom pipeline to surface the same pipeline-specific local shell bootstrap warnings that `run` and `smoke` preflight use:
 
