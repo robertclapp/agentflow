@@ -88,10 +88,41 @@ class LocalRunner(Runner):
         )
 
     def _should_suppress_stderr(self, node: NodeSpec, text: str) -> bool:
-        target = node.target
-        if not isinstance(target, LocalTarget) or not target.shell_interactive:
+        if not self._uses_interactive_bash(node):
             return False
         return any(text.startswith(prefix) for prefix in self._INTERACTIVE_SHELL_STDERR_NOISE)
+
+    def _uses_interactive_bash(self, node: NodeSpec) -> bool:
+        target = node.target
+        if not isinstance(target, LocalTarget):
+            return False
+        if target.shell_interactive:
+            return True
+        if not target.shell:
+            return False
+
+        try:
+            shell_parts = shlex.split(target.shell)
+        except ValueError:
+            return False
+
+        for index, part in enumerate(shell_parts):
+            if os.path.basename(part) != "bash":
+                continue
+            interactive = False
+            for arg in shell_parts[index + 1 :]:
+                if arg.startswith("--"):
+                    if arg == "--command":
+                        return interactive
+                    continue
+                if not arg.startswith("-") or arg == "-":
+                    return interactive
+                if "i" in arg[1:]:
+                    interactive = True
+                if "c" in arg[1:]:
+                    return interactive
+            return interactive
+        return False
 
     async def _consume_stream(self, node: NodeSpec, stream, stream_name: str, buffer: list[str], on_output: StreamCallback) -> None:
         while True:

@@ -126,6 +126,53 @@ async def test_local_runner_shell_init_runs_in_login_interactive_shell(tmp_path:
 
 
 @pytest.mark.asyncio
+async def test_local_runner_explicit_bash_lic_suppresses_job_control_noise(tmp_path: Path):
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    (fake_home / ".hushlogin").write_text("", encoding="utf-8")
+    (fake_home / ".profile").write_text(
+        """if [ -f "$HOME/.bashrc" ]; then
+  . "$HOME/.bashrc"
+fi
+""",
+        encoding="utf-8",
+    )
+    (fake_home / ".bashrc").write_text(
+        """case $- in
+  *i*) ;;
+  *) return;;
+esac
+export WRAPPED_VALUE=explicit-lic-ok
+""",
+        encoding="utf-8",
+    )
+
+    node = NodeSpec.model_validate(
+        {
+            "id": "gamma-explicit-shell",
+            "agent": "claude",
+            "prompt": "hi",
+            "target": {
+                "kind": "local",
+                "shell": "bash -lic",
+            },
+        }
+    )
+    prepared = PreparedExecution(
+        command=["python3", "-c", 'import os; print(os.getenv("WRAPPED_VALUE", ""), end="")'],
+        env={"HOME": str(fake_home)},
+        cwd=str(tmp_path),
+        trace_kind="claude",
+    )
+
+    result = await LocalRunner().execute(node, prepared, _paths(tmp_path), _noop_output, lambda: False)
+
+    assert result.exit_code == 0
+    assert result.stdout_lines[-1] == "explicit-lic-ok"
+    assert result.stderr_lines == []
+
+
+@pytest.mark.asyncio
 async def test_local_runner_shell_init_failure_stops_wrapped_command(tmp_path: Path):
     node = NodeSpec.model_validate(
         {
