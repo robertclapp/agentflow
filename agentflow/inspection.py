@@ -25,6 +25,15 @@ def _auto_preflight_summary(value: Any) -> str | None:
     status = "enabled" if enabled else "disabled"
     return f"{status} - {reason}"
 
+
+def _auto_preflight_match_summary(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return []
+    matches = value.get("match_summary")
+    if not isinstance(matches, list):
+        return []
+    return [match for match in matches if isinstance(match, str) and match]
+
 def _preview_text(text: str | None, *, limit: int = 100) -> str | None:
     if text is None:
         return None
@@ -259,9 +268,13 @@ def build_launch_inspection_summary(report: dict[str, Any]) -> dict[str, Any]:
         "nodes": [],
     }
 
-    auto_preflight = _auto_preflight_summary(pipeline.get("auto_preflight"))
+    raw_auto_preflight = pipeline.get("auto_preflight")
+    auto_preflight = _auto_preflight_summary(raw_auto_preflight)
     if auto_preflight:
         summary["pipeline"]["auto_preflight"] = auto_preflight
+    auto_preflight_matches = _auto_preflight_match_summary(raw_auto_preflight)
+    if auto_preflight_matches:
+        summary["pipeline"]["auto_preflight_matches"] = auto_preflight_matches
 
     notes = report.get("notes")
     if notes:
@@ -316,9 +329,13 @@ def build_launch_inspection_summary(report: dict[str, Any]) -> dict[str, Any]:
 def render_launch_inspection_summary(report: dict[str, Any]) -> str:
     pipeline = report["pipeline"]
     lines = [f"Pipeline: {pipeline['name']}", f"Working dir: {pipeline['working_dir']}"]
-    auto_preflight = _auto_preflight_summary(pipeline.get("auto_preflight"))
+    raw_auto_preflight = pipeline.get("auto_preflight")
+    auto_preflight = _auto_preflight_summary(raw_auto_preflight)
     if auto_preflight:
         lines.append(f"Auto preflight: {auto_preflight}")
+    auto_preflight_matches = _auto_preflight_match_summary(raw_auto_preflight)
+    if auto_preflight_matches:
+        lines.append(f"Auto preflight matches: {', '.join(auto_preflight_matches)}")
     for note in report.get("notes", []):
         lines.append(f"Note: {note}")
     lines.append("Nodes:")

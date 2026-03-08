@@ -328,25 +328,60 @@ def _structured_output_from_run_output(output: RunOutputFormat) -> StructuredOut
 
 
 def _node_uses_kimi_smoke_bootstrap(node: object) -> bool:
+    return _node_kimi_smoke_preflight_match(node) is not None
+
+
+def _node_kimi_smoke_preflight_match(node: object) -> dict[str, str] | None:
     agent = _status_value(getattr(node, "agent", None)).lower()
     if agent not in {"codex", "claude"}:
-        return False
+        return None
 
     target = getattr(node, "target", None)
     if getattr(target, "kind", None) != "local":
-        return False
+        return None
+
+    node_id = str(getattr(node, "id", None) or agent)
 
     shell_init = getattr(target, "shell_init", None)
     if isinstance(shell_init, str) and "kimi" in shell_init.lower():
-        return True
+        return {
+            "node_id": node_id,
+            "agent": agent,
+            "trigger": "target.shell_init",
+        }
 
     shell = getattr(target, "shell", None)
-    return isinstance(shell, str) and "kimi" in shell.lower()
+    if isinstance(shell, str) and "kimi" in shell.lower():
+        return {
+            "node_id": node_id,
+            "agent": agent,
+            "trigger": "target.shell",
+        }
+    return None
+
+
+def _pipeline_kimi_smoke_preflight_matches(pipeline: object) -> list[dict[str, str]]:
+    nodes = getattr(pipeline, "nodes", None) or []
+    matches: list[dict[str, str]] = []
+    for node in nodes:
+        match = _node_kimi_smoke_preflight_match(node)
+        if match is not None:
+            matches.append(match)
+    return matches
+
+
+def _render_kimi_smoke_preflight_matches(matches: list[dict[str, str]]) -> list[str]:
+    rendered: list[str] = []
+    for match in matches:
+        node_id = match["node_id"]
+        agent = match["agent"]
+        trigger = match["trigger"]
+        rendered.append(f"{node_id} ({agent}) via `{trigger}`")
+    return rendered
 
 
 def _pipeline_uses_kimi_smoke_preflight(pipeline: object) -> bool:
-    nodes = getattr(pipeline, "nodes", None) or []
-    return any(_node_uses_kimi_smoke_bootstrap(node) for node in nodes)
+    return bool(_pipeline_kimi_smoke_preflight_matches(pipeline))
 
 
 def _auto_smoke_preflight_reason(path: str, pipeline: object) -> str | None:
@@ -360,12 +395,21 @@ def _auto_smoke_preflight_reason(path: str, pipeline: object) -> str | None:
 
 
 def _auto_smoke_preflight_metadata(path: str, pipeline: object) -> dict[str, object]:
+    matches = _pipeline_kimi_smoke_preflight_matches(pipeline)
+    match_summary = _render_kimi_smoke_preflight_matches(matches)
     reason = _auto_smoke_preflight_reason(path, pipeline)
     if reason is not None:
-        return {"enabled": True, "reason": reason}
+        return {
+            "enabled": True,
+            "reason": reason,
+            "matches": matches,
+            "match_summary": match_summary,
+        }
     return {
         "enabled": False,
         "reason": "path does not match the bundled smoke pipeline and no local Codex/Claude node uses `kimi` bootstrap.",
+        "matches": matches,
+        "match_summary": match_summary,
     }
 
 

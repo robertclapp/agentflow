@@ -145,6 +145,7 @@ nodes:
     assert result.exit_code == 0
     assert "Pipeline: inspect-demo" in result.stdout
     assert "Auto preflight: enabled - local Codex/Claude nodes use a `kimi` shell bootstrap." in result.stdout
+    assert "Auto preflight matches: plan (codex) via `target.shell_init`" in result.stdout
     assert "Note: Dependency references use placeholder node outputs" in result.stdout
     assert "- plan [codex/local]" in result.stdout
     assert "Model: gpt-5" in result.stdout
@@ -183,6 +184,14 @@ nodes:
     assert payload["pipeline"]["auto_preflight"] == {
         "enabled": True,
         "reason": "local Codex/Claude nodes use a `kimi` shell bootstrap.",
+        "matches": [
+            {
+                "node_id": "review",
+                "agent": "claude",
+                "trigger": "target.shell_init",
+            }
+        ],
+        "match_summary": ["review (claude) via `target.shell_init`"],
     }
     assert [node["id"] for node in payload["nodes"]] == ["review"]
     assert payload["nodes"][0]["resolved_provider"] == {
@@ -228,6 +237,7 @@ nodes:
         "working_dir": str(tmp_path.resolve()),
         "node_count": 1,
         "auto_preflight": "enabled - local Codex/Claude nodes use a `kimi` shell bootstrap.",
+        "auto_preflight_matches": ["review (claude) via `target.shell_init`"],
     }
     assert payload["nodes"] == [
         {
@@ -265,6 +275,54 @@ nodes:
     assert payload["pipeline"]["auto_preflight"] == (
         "disabled - path does not match the bundled smoke pipeline and no local Codex/Claude node uses `kimi` bootstrap."
     )
+
+
+def test_inspect_command_reports_auto_preflight_match_sources(tmp_path):
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        """name: inspect-preflight-matches
+working_dir: .
+nodes:
+  - id: plan
+    agent: codex
+    prompt: hi
+    target:
+      kind: local
+      shell: bash
+      shell_login: true
+      shell_interactive: true
+      shell_init: kimi
+
+  - id: review
+    agent: claude
+    prompt: hi
+    target:
+      kind: local
+      shell: "bash -lic 'kimi && {command}'"
+""",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["inspect", str(pipeline_path), "--output", "json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["pipeline"]["auto_preflight"]["matches"] == [
+        {
+            "node_id": "plan",
+            "agent": "codex",
+            "trigger": "target.shell_init",
+        },
+        {
+            "node_id": "review",
+            "agent": "claude",
+            "trigger": "target.shell",
+        },
+    ]
+    assert payload["pipeline"]["auto_preflight"]["match_summary"] == [
+        "plan (codex) via `target.shell_init`",
+        "review (claude) via `target.shell`",
+    ]
 
 
 def test_inspect_command_redacts_auth_and_header_style_env_keys(tmp_path, monkeypatch):
