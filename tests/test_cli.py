@@ -1519,6 +1519,46 @@ def test_run_auto_runs_preflight_for_custom_pipeline_with_kimi_shell_init(monkey
     assert captured["wait_timeout"] is None
 
 
+def test_run_show_preflight_prints_successful_summary_to_stderr(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class FakeOrchestrator:
+        async def submit(self, pipeline: object):
+            captured["submitted_pipeline"] = pipeline
+            return SimpleNamespace(id="run-show-preflight")
+
+        async def wait(self, run_id: str, timeout: float | None = None):
+            captured["wait_run_id"] = run_id
+            captured["wait_timeout"] = timeout
+            return _completed_run(run_id, pipeline_name="custom-kimi-run")
+
+    monkeypatch.setattr(agentflow.cli, "build_local_smoke_doctor_report", lambda: _doctor_report())
+    monkeypatch.setattr(
+        agentflow.cli,
+        "_build_runtime",
+        lambda runs_dir, max_concurrent_runs: (SimpleNamespace(run_dir=lambda run_id: Path(runs_dir) / run_id), FakeOrchestrator()),
+    )
+    fake_pipeline = SimpleNamespace(
+        nodes=[
+            SimpleNamespace(
+                agent=SimpleNamespace(value="codex"),
+                target=SimpleNamespace(kind="local", shell="bash", shell_interactive=True, shell_init="kimi"),
+            )
+        ]
+    )
+    monkeypatch.setattr(agentflow.cli, "_load_pipeline", _capture_pipeline_loader(captured, fake_pipeline))
+
+    result = runner.invoke(app, ["run", "custom-run.yaml", "--output", "summary", "--show-preflight"])
+
+    assert result.exit_code == 0
+    assert result.stderr == "Doctor: ok\n- kimi_shell_helper: ok - ready\n"
+    assert "Run run-show-preflight: completed" in result.stdout
+    assert captured["loaded_path"] == "custom-run.yaml"
+    assert captured["submitted_pipeline"] is fake_pipeline
+    assert captured["wait_run_id"] == "run-show-preflight"
+    assert captured["wait_timeout"] is None
+
+
 def test_run_auto_preflight_stops_when_local_codex_auth_is_unavailable(monkeypatch):
     captured: dict[str, object] = {}
 
@@ -1947,6 +1987,64 @@ def test_smoke_runs_when_bundled_preflight_warns(monkeypatch):
     assert captured["submitted_pipeline"] is fake_pipeline
     assert captured["wait_run_id"] == "smoke-warning"
     assert captured["wait_timeout"] is None
+
+
+def test_smoke_show_preflight_prints_successful_summary_to_stderr(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class FakeOrchestrator:
+        async def submit(self, pipeline: object):
+            captured["submitted_pipeline"] = pipeline
+            return SimpleNamespace(id="smoke-show-preflight")
+
+        async def wait(self, run_id: str, timeout: float | None = None):
+            captured["wait_run_id"] = run_id
+            captured["wait_timeout"] = timeout
+            return _completed_run(run_id, pipeline_name="local-real-agents-kimi-smoke")
+
+    monkeypatch.setattr(agentflow.cli, "build_local_smoke_doctor_report", lambda: _doctor_report())
+    monkeypatch.setattr(
+        agentflow.cli,
+        "_build_runtime",
+        lambda runs_dir, max_concurrent_runs: (SimpleNamespace(run_dir=lambda run_id: Path(runs_dir) / run_id), FakeOrchestrator()),
+    )
+    monkeypatch.setattr(agentflow.cli, "default_smoke_pipeline_path", lambda: "examples/local-real-agents-kimi-smoke.yaml")
+    fake_pipeline = object()
+    monkeypatch.setattr(agentflow.cli, "_load_pipeline", _capture_pipeline_loader(captured, fake_pipeline))
+
+    result = runner.invoke(app, ["smoke", "--show-preflight"])
+
+    assert result.exit_code == 0
+    assert result.stderr == "Doctor: ok\n- kimi_shell_helper: ok - ready\n"
+    assert "Run smoke-show-preflight: completed" in result.stdout
+    assert captured["loaded_path"] == "examples/local-real-agents-kimi-smoke.yaml"
+    assert captured["submitted_pipeline"] is fake_pipeline
+    assert captured["wait_run_id"] == "smoke-show-preflight"
+    assert captured["wait_timeout"] is None
+
+
+def test_smoke_show_preflight_keeps_json_stdout_machine_readable(monkeypatch):
+    class FakeOrchestrator:
+        async def submit(self, pipeline: object):
+            return SimpleNamespace(id="smoke-show-preflight-json")
+
+        async def wait(self, run_id: str, timeout: float | None = None):
+            return _completed_run(run_id, pipeline_name="local-real-agents-kimi-smoke")
+
+    monkeypatch.setattr(agentflow.cli, "build_local_smoke_doctor_report", lambda: _doctor_report())
+    monkeypatch.setattr(
+        agentflow.cli,
+        "_build_runtime",
+        lambda runs_dir, max_concurrent_runs: (SimpleNamespace(run_dir=lambda run_id: Path(runs_dir) / run_id), FakeOrchestrator()),
+    )
+    monkeypatch.setattr(agentflow.cli, "default_smoke_pipeline_path", lambda: "examples/local-real-agents-kimi-smoke.yaml")
+    monkeypatch.setattr(agentflow.cli, "_load_pipeline", lambda path: object())
+
+    result = runner.invoke(app, ["smoke", "--output", "json", "--show-preflight"])
+
+    assert result.exit_code == 0
+    assert result.stderr == "Doctor: ok\n- kimi_shell_helper: ok - ready\n"
+    assert json.loads(result.stdout) == {"id": "smoke-show-preflight-json", "status": "completed"}
 
 
 def test_smoke_warn_preflight_includes_shell_bridge_summary_when_available(monkeypatch):

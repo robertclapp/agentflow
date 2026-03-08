@@ -609,6 +609,8 @@ def _load_pipeline_with_optional_smoke_preflight(
     selected_path: str,
     preflight: SmokePreflightMode,
     output: RunOutputFormat,
+    *,
+    show_preflight: bool = False,
 ) -> object:
     pipeline = None
     should_run_preflight = _should_run_smoke_preflight(path, preflight)
@@ -640,6 +642,14 @@ def _load_pipeline_with_optional_smoke_preflight(
             _echo_doctor_report(
                 report,
                 output=doctor_output,
+                err=True,
+                include_shell_bridge=include_shell_bridge,
+                shell_bridge=shell_bridge,
+            )
+        elif show_preflight:
+            _echo_doctor_report(
+                report,
+                output=StructuredOutputFormat.SUMMARY,
                 err=True,
                 include_shell_bridge=include_shell_bridge,
                 shell_bridge=shell_bridge,
@@ -803,8 +813,19 @@ def run(
         "--preflight",
         help="When to run the local smoke preflight for bundled or Kimi-bootstrapped local pipelines.",
     ),
+    show_preflight: bool = typer.Option(
+        False,
+        "--show-preflight",
+        help="Print a successful local preflight summary to stderr when preflight runs.",
+    ),
 ) -> None:
-    pipeline = _load_pipeline_with_optional_smoke_preflight(path, path, preflight, output)
+    pipeline = _load_pipeline_with_optional_smoke_preflight(
+        path,
+        path,
+        preflight,
+        output,
+        show_preflight=show_preflight,
+    )
     _run_pipeline(pipeline, runs_dir, max_concurrent_runs, output)
 
 
@@ -819,9 +840,20 @@ def smoke(
         "--preflight",
         help="When to run the local smoke preflight for bundled or Kimi-bootstrapped local pipelines.",
     ),
+    show_preflight: bool = typer.Option(
+        False,
+        "--show-preflight",
+        help="Print a successful local preflight summary to stderr when preflight runs.",
+    ),
 ) -> None:
     selected_path = path or default_smoke_pipeline_path()
-    pipeline = _load_pipeline_with_optional_smoke_preflight(path, selected_path, preflight, output)
+    pipeline = _load_pipeline_with_optional_smoke_preflight(
+        path,
+        selected_path,
+        preflight,
+        output,
+        show_preflight=show_preflight,
+    )
     _run_pipeline(pipeline, runs_dir, max_concurrent_runs, output)
 
 
