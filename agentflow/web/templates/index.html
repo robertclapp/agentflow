@@ -7,43 +7,82 @@
     <link rel="stylesheet" href="/static/styles.css">
   </head>
   <body>
-    <header>
-      <h1>AgentFlow</h1>
-      <p>Parallel and DAG orchestration for Codex, Claude, and Kimi.</p>
+    <header class="topbar">
+      <div>
+        <h1>AgentFlow</h1>
+        <p>Production-style orchestration for Codex, Claude, and Kimi DAGs.</p>
+      </div>
+      <div class="status-strip">
+        <div class="metric"><span>Total runs</span><strong id="metric-total">0</strong></div>
+        <div class="metric"><span>Queued</span><strong id="metric-queued">0</strong></div>
+        <div class="metric"><span>Running</span><strong id="metric-running">0</strong></div>
+      </div>
     </header>
+
+    <div id="banner" class="banner hidden"></div>
+
     <main class="layout">
       <section class="panel editor">
         <div class="panel-header">
-          <h2>Pipeline</h2>
+          <div>
+            <h2>Pipeline</h2>
+            <div class="small">YAML or JSON pipeline definition</div>
+          </div>
           <div class="button-row">
             <button id="load-example">Load example</button>
+            <button id="validate-pipeline">Validate</button>
             <button id="run-pipeline" class="primary">Run pipeline</button>
           </div>
         </div>
         <textarea id="pipeline-input">{{ example }}</textarea>
       </section>
+
       <section class="panel graph-panel">
         <div class="panel-header">
-          <h2>DAG</h2>
-          <span id="run-status">Idle</span>
+          <div>
+            <h2>DAG</h2>
+            <div class="small" id="run-meta">No run selected</div>
+          </div>
+          <div class="button-row">
+            <span id="run-status" class="status-pill">idle</span>
+            <button id="cancel-run">Cancel</button>
+            <button id="rerun-run">Rerun</button>
+          </div>
         </div>
         <div id="graph"></div>
       </section>
+
       <section class="panel runs-panel">
         <div class="panel-header">
-          <h2>Runs</h2>
-          <button id="refresh-runs">Refresh</button>
+          <div>
+            <h2>Runs</h2>
+            <div class="small">Persistent run history</div>
+          </div>
+          <div class="button-row">
+            <input id="run-search" class="search" type="search" placeholder="Filter runs">
+            <button id="refresh-runs">Refresh</button>
+          </div>
         </div>
         <div id="runs"></div>
       </section>
+
       <section class="panel detail-panel">
         <div class="panel-header">
-          <h2>Node detail</h2>
-          <span id="selected-node">None</span>
+          <div>
+            <h2>Node detail</h2>
+            <div class="small" id="selected-node">None selected</div>
+          </div>
+          <div class="button-row">
+            <button data-artifact="output.txt" class="artifact-button">Output</button>
+            <button data-artifact="stdout.log" class="artifact-button">Stdout</button>
+            <button data-artifact="stderr.log" class="artifact-button">Stderr</button>
+            <button data-artifact="trace.jsonl" class="artifact-button">Trace</button>
+          </div>
         </div>
         <div id="detail"></div>
       </section>
     </main>
+
     <script src="/static/app.js"></script>
   </body>
 </html>
