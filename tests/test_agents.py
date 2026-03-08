@@ -148,3 +148,20 @@ def test_kimi_adapter_supports_provider_alias(tmp_path):
     assert request["provider"]["name"] == "moonshot"
     assert request["provider"]["base_url"] == "https://api.moonshot.ai/v1"
     assert request["provider"]["api_key_env"] == "KIMI_API_KEY"
+
+
+def test_kimi_adapter_uses_current_python_by_default(tmp_path):
+    node = NodeSpec.model_validate(
+        {
+            "id": "review",
+            "agent": "kimi",
+            "prompt": "Review",
+        }
+    )
+
+    prepared = KimiAdapter().prepare(node, "Review", _paths(tmp_path))
+
+    import sys
+
+    assert prepared.command[0] == sys.executable
+    assert prepared.command[1:3] == ["-m", "agentflow.remote.kimi_bridge"]

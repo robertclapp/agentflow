@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from agentflow.agents.base import AgentAdapter
@@ -24,7 +25,7 @@ class KimiAdapter(AgentAdapter):
         }
         relative_path = self.relative_runtime_file("kimi-request.json")
         runtime_files = {relative_path: json.dumps(request, ensure_ascii=False, indent=2)}
-        executable = node.executable or "python3"
+        executable = node.executable or sys.executable or "python3"
         command = [
             executable,
             "-m",
