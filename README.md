@@ -121,7 +121,7 @@ Each node supports:
 - `mcps`: a list of MCP server definitions
 - `skills`: a list of local skill paths or names
 - `target`: `local`, `container`, or `aws_lambda`
-- local shell bootstrap fields: `shell`, `shell_login`, `shell_interactive`, and `shell_init`
+- local working-dir and shell bootstrap fields: `cwd`, `shell`, `shell_login`, `shell_interactive`, and `shell_init`
 - `capture`: `final` or `trace`
 - `retries` and `retry_backoff_seconds`
 - `success_criteria`: output or filesystem checks evaluated after execution
@@ -144,6 +144,8 @@ Built-in provider shorthands:
 ### Local
 
 Runs the prepared agent command directly on the host. Set `target.shell` to wrap the command in a specific shell, such as `bash -lc`. If you provide a shell name without an explicit command flag, AgentFlow uses `-c` by default; opt into startup file loading with `shell_login: true` and `shell_interactive: true`. You can also use a `{command}` placeholder in the shell string to run shell bootstrap steps before the prepared agent command.
+
+`target.cwd` controls the local node working directory. Absolute paths are used as-is; relative paths are resolved from the pipeline `working_dir`. File-based success criteria such as `file_exists`, `file_contains`, and `file_nonempty` are evaluated from that resolved local node working directory.
 
 The local-shell bootstrap fields `shell_login`, `shell_interactive`, and `shell_init` require `target.shell`. AgentFlow now rejects configs that set those fields without an explicit shell, because they would otherwise be silently ignored.
 
