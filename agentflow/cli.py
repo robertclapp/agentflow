@@ -319,6 +319,14 @@ def _doctor_report():
     return build_local_smoke_doctor_report()
 
 
+def _doctor_report_for_path(path: str | None = None):
+    report = _doctor_report()
+    if path is None:
+        return report
+    pipeline = _load_pipeline(path)
+    return _augment_preflight_report(report, pipeline)
+
+
 def _preflight_shell_bridge_recommendation(report: object) -> object | None:
     for check in getattr(report, "checks", []) or []:
         if getattr(check, "name", None) != "bash_login_startup":
@@ -666,6 +674,10 @@ def smoke(
 
 @app.command()
 def doctor(
+    path: str | None = typer.Argument(
+        None,
+        help="Optional pipeline path. Adds pipeline-specific local shell bootstrap warnings to the doctor report.",
+    ),
     output: StructuredOutputFormat = typer.Option(StructuredOutputFormat.JSON, "--output", help="Result output format."),
     shell_bridge: bool = typer.Option(
         False,
@@ -673,7 +685,7 @@ def doctor(
         help="Include a ready-to-paste bash login bridge suggestion when local shell startup needs one.",
     ),
 ) -> None:
-    report = _doctor_report()
+    report = _doctor_report_for_path(path)
     recommendation = build_bash_login_shell_bridge_recommendation() if shell_bridge else None
     _echo_doctor_report(report, output=output, include_shell_bridge=shell_bridge, shell_bridge=recommendation)
     raise typer.Exit(code=0 if report.status != "failed" else 1)
