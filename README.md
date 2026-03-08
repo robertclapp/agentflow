@@ -48,6 +48,8 @@ agentflow inspect examples/local-real-agents-kimi-smoke.yaml
 agentflow inspect examples/pipeline.yaml --node review --output json
 ```
 
+The default summary view now includes resolved per-node model and provider details when they are set, which makes it easier to verify mixed Codex, Claude, and Kimi launch configs before you execute a run.
+
 Run a pipeline once:
 
 ```bash
