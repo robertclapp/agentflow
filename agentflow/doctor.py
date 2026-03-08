@@ -343,6 +343,10 @@ def _prepared_codex_auth_execution(node: object, pipeline: object | None = None)
     target = _coerce_local_target(_object_value(node, "target"))
     if target is None:
         return None
+    if kimi_shell_init_requires_bash_warning(target) is not None:
+        return None
+    if kimi_shell_init_requires_interactive_bash_warning(target) is not None:
+        return None
 
     provider = resolve_provider(_object_value(node, "provider"), AgentKind.CODEX)
     env = merge_env_layers(_object_value(provider, "env"), _object_value(node, "env"))

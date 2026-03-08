@@ -1421,6 +1421,136 @@ nodes:
         ["smoke"],
     ],
 )
+def test_run_and_smoke_preflight_skips_codex_auth_probe_when_kimi_shell_init_is_not_interactive(
+    tmp_path,
+    monkeypatch,
+    command,
+):
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        """name: codex-kimi-preflight-warning
+working_dir: .
+nodes:
+  - id: codex_plan
+    agent: codex
+    prompt: hi
+    target:
+      kind: local
+      shell: bash
+      shell_login: true
+      shell_init: kimi
+""",
+        encoding="utf-8",
+    )
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        agentflow.cli,
+        "build_local_smoke_doctor_report",
+        lambda: DoctorReport(
+            status="ok",
+            checks=[DoctorCheck(name="kimi_shell_helper", status="ok", detail="ready")],
+        ),
+    )
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("codex auth probe should not run when the kimi shell bootstrap already warns"),
+    )
+    monkeypatch.setattr(
+        agentflow.cli,
+        "_run_pipeline",
+        lambda pipeline, runs_dir, max_concurrent_runs, output: captured.setdefault("pipeline", pipeline.name),
+    )
+
+    result = runner.invoke(app, [*command, str(pipeline_path), "--output", "json"])
+
+    assert result.exit_code == 0
+    assert captured == {"pipeline": "codex-kimi-preflight-warning"}
+    payload = json.loads(result.stderr or result.stdout)
+    assert payload["status"] == "warning"
+    assert payload["checks"] == [
+        {"name": "kimi_shell_helper", "status": "ok", "detail": "ready"},
+        {
+            "name": "kimi_shell_bootstrap",
+            "status": "warning",
+            "detail": "Node `codex_plan`: `shell_init: kimi` uses bash without interactive startup; helpers from `~/.bashrc` are usually unavailable. Set `target.shell_interactive: true` or use `bash -lic`.",
+        },
+    ]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["run"],
+        ["smoke"],
+    ],
+)
+def test_run_and_smoke_preflight_skips_codex_auth_probe_when_kimi_shell_init_uses_non_bash_shell(
+    tmp_path,
+    monkeypatch,
+    command,
+):
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        """name: codex-kimi-preflight-non-bash
+working_dir: .
+nodes:
+  - id: codex_plan
+    agent: codex
+    prompt: hi
+    target:
+      kind: local
+      shell: sh
+      shell_init: kimi
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        agentflow.cli,
+        "build_local_smoke_doctor_report",
+        lambda: DoctorReport(
+            status="ok",
+            checks=[DoctorCheck(name="kimi_shell_helper", status="ok", detail="ready")],
+        ),
+    )
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("codex auth probe should not run when the kimi shell bootstrap already fails"),
+    )
+    monkeypatch.setattr(
+        agentflow.cli,
+        "_run_pipeline",
+        lambda pipeline, runs_dir, max_concurrent_runs, output: pytest.fail("pipeline should not run"),
+    )
+
+    result = runner.invoke(app, [*command, str(pipeline_path), "--output", "json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr or result.stdout)
+    assert payload["status"] == "failed"
+    assert payload["checks"] == [
+        {"name": "kimi_shell_helper", "status": "ok", "detail": "ready"},
+        {
+            "name": "kimi_shell_bootstrap",
+            "status": "failed",
+            "detail": "Node `codex_plan`: `shell_init: kimi` requires bash-style shell bootstrap, but `target.shell` resolves to `sh`. Use `shell: bash` with `target.shell_login: true` and `target.shell_interactive: true`, use `bash -lic`, or export provider variables directly.",
+        },
+    ]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["run"],
+        ["smoke"],
+    ],
+)
 def test_run_and_smoke_preflight_warn_when_explicit_kimi_shell_wrapper_is_not_interactive(tmp_path, monkeypatch, command):
     pipeline_path = tmp_path / "pipeline.yaml"
     pipeline_path.write_text(
