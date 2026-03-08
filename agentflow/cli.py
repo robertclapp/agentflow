@@ -260,6 +260,29 @@ def _should_run_smoke_preflight(
     return _pipeline_uses_kimi_smoke_preflight(pipeline)
 
 
+def _load_pipeline_with_optional_smoke_preflight(
+    path: str | None,
+    selected_path: str,
+    preflight: SmokePreflightMode,
+    output: RunOutputFormat,
+) -> object:
+    pipeline = None
+    should_run_preflight = _should_run_smoke_preflight(path, preflight)
+    if not should_run_preflight and preflight == SmokePreflightMode.AUTO and path is not None:
+        pipeline = _load_pipeline(selected_path)
+        should_run_preflight = _should_run_smoke_preflight(path, preflight, pipeline=pipeline)
+
+    if should_run_preflight:
+        report = _doctor_report()
+        if report.status == "failed":
+            _echo_doctor_report(report, output=output)
+            raise typer.Exit(code=1)
+        if report.status == "warning":
+            _echo_doctor_report(report, output=output, err=True)
+
+    return pipeline if pipeline is not None else _load_pipeline(selected_path)
+
+
 def _render_doctor_summary(report: object) -> str:
     lines = [f"Doctor: {_status_value(getattr(report, 'status', 'unknown'))}"]
     for check in getattr(report, "checks", []) or []:
@@ -326,8 +349,14 @@ def run(
     runs_dir: str = typer.Option(".agentflow/runs", envvar="AGENTFLOW_RUNS_DIR"),
     max_concurrent_runs: int = typer.Option(2, envvar="AGENTFLOW_MAX_CONCURRENT_RUNS"),
     output: RunOutputFormat = typer.Option(RunOutputFormat.JSON, "--output", help="Result output format."),
+    preflight: SmokePreflightMode = typer.Option(
+        SmokePreflightMode.AUTO,
+        "--preflight",
+        help="When to run the local smoke preflight for bundled or Kimi-bootstrapped local pipelines.",
+    ),
 ) -> None:
-    _run_pipeline_path(path, runs_dir, max_concurrent_runs, output)
+    pipeline = _load_pipeline_with_optional_smoke_preflight(path, path, preflight, output)
+    _run_pipeline(pipeline, runs_dir, max_concurrent_runs, output)
 
 
 @app.command()
@@ -339,25 +368,11 @@ def smoke(
     preflight: SmokePreflightMode = typer.Option(
         SmokePreflightMode.AUTO,
         "--preflight",
-        help="When to run the bundled local smoke preflight.",
+        help="When to run the local smoke preflight for bundled or Kimi-bootstrapped local pipelines.",
     ),
 ) -> None:
     selected_path = path or default_smoke_pipeline_path()
-    pipeline = None
-    should_run_preflight = _should_run_smoke_preflight(path, preflight)
-    if not should_run_preflight and preflight == SmokePreflightMode.AUTO and path is not None:
-        pipeline = _load_pipeline(selected_path)
-        should_run_preflight = _should_run_smoke_preflight(path, preflight, pipeline=pipeline)
-
-    if should_run_preflight:
-        report = _doctor_report()
-        if report.status == "failed":
-            _echo_doctor_report(report, output=output)
-            raise typer.Exit(code=1)
-        if report.status == "warning":
-            _echo_doctor_report(report, output=output, err=True)
-    if pipeline is None:
-        pipeline = _load_pipeline(selected_path)
+    pipeline = _load_pipeline_with_optional_smoke_preflight(path, selected_path, preflight, output)
     _run_pipeline(pipeline, runs_dir, max_concurrent_runs, output)
 
 
