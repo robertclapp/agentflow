@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from contextlib import suppress
 
 from agentflow.prepared import ExecutionPaths, PreparedExecution
 from agentflow.runners.base import RawExecutionResult, Runner, StreamCallback
@@ -24,6 +25,7 @@ class LocalRunner(Runner):
         prepared: PreparedExecution,
         paths: ExecutionPaths,
         on_output: StreamCallback,
+        should_cancel,
     ) -> RawExecutionResult:
         self.materialize_runtime_files(paths.host_runtime_dir, prepared.runtime_files)
         env = os.environ.copy()
@@ -43,20 +45,43 @@ class LocalRunner(Runner):
 
         stdout_lines: list[str] = []
         stderr_lines: list[str] = []
-        try:
-            await asyncio.wait_for(
-                asyncio.gather(
-                    self._consume_stream(process.stdout, "stdout", stdout_lines, on_output),
-                    self._consume_stream(process.stderr, "stderr", stderr_lines, on_output),
-                    process.wait(),
-                ),
-                timeout=node.timeout_seconds,
-            )
-        except asyncio.TimeoutError:
-            process.kill()
-            await process.wait()
-            stderr_lines.append(f"Timed out after {node.timeout_seconds}s")
-            await on_output("stderr", stderr_lines[-1])
-            return RawExecutionResult(exit_code=124, stdout_lines=stdout_lines, stderr_lines=stderr_lines)
+        stdout_task = asyncio.create_task(self._consume_stream(process.stdout, "stdout", stdout_lines, on_output))
+        stderr_task = asyncio.create_task(self._consume_stream(process.stderr, "stderr", stderr_lines, on_output))
+        wait_task = asyncio.create_task(process.wait())
+        deadline = asyncio.get_running_loop().time() + node.timeout_seconds
+        timed_out = False
+        cancelled = False
 
-        return RawExecutionResult(exit_code=process.returncode, stdout_lines=stdout_lines, stderr_lines=stderr_lines)
+        try:
+            while not wait_task.done():
+                if should_cancel():
+                    cancelled = True
+                    process.terminate()
+                    break
+                if asyncio.get_running_loop().time() >= deadline:
+                    timed_out = True
+                    process.kill()
+                    break
+                await asyncio.sleep(0.1)
+            await wait_task
+        finally:
+            await asyncio.gather(stdout_task, stderr_task, return_exceptions=True)
+            if timed_out:
+                stderr_lines.append(f"Timed out after {node.timeout_seconds}s")
+                await on_output("stderr", stderr_lines[-1])
+            if cancelled:
+                stderr_lines.append("Cancelled by user")
+                await on_output("stderr", stderr_lines[-1])
+            with suppress(ProcessLookupError):
+                if not wait_task.done():
+                    process.kill()
+                    await wait_task
+
+        exit_code = process.returncode if process.returncode is not None else (130 if cancelled else 124)
+        return RawExecutionResult(
+            exit_code=exit_code,
+            stdout_lines=stdout_lines,
+            stderr_lines=stderr_lines,
+            timed_out=timed_out,
+            cancelled=cancelled,
+        )

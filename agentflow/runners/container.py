@@ -8,7 +8,7 @@ from agentflow.specs import ContainerTarget, NodeSpec
 
 
 class ContainerRunner(LocalRunner):
-    async def execute(self, node: NodeSpec, prepared: PreparedExecution, paths: ExecutionPaths, on_output):
+    async def execute(self, node: NodeSpec, prepared: PreparedExecution, paths: ExecutionPaths, on_output, should_cancel):
         target = node.target
         if not isinstance(target, ContainerTarget):
             raise TypeError("ContainerRunner requires a ContainerTarget")
@@ -45,4 +45,4 @@ class ContainerRunner(LocalRunner):
             runtime_files={},
             stdin=prepared.stdin,
         )
-        return await super().execute(node, container_prepared, paths, on_output)
+        return await super().execute(node, container_prepared, paths, on_output, should_cancel)

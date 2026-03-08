@@ -14,9 +14,12 @@ class RawExecutionResult(BaseModel):
     exit_code: int
     stdout_lines: list[str] = Field(default_factory=list)
     stderr_lines: list[str] = Field(default_factory=list)
+    timed_out: bool = False
+    cancelled: bool = False
 
 
 StreamCallback = Callable[[str, str], Awaitable[None]]
+CancelCallback = Callable[[], bool]
 
 
 class Runner(ABC):
@@ -27,6 +30,7 @@ class Runner(ABC):
         prepared: PreparedExecution,
         paths: ExecutionPaths,
         on_output: StreamCallback,
+        should_cancel: CancelCallback,
     ) -> RawExecutionResult:
         raise NotImplementedError
 

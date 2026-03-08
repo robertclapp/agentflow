@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from datetime import datetime
 from pathlib import Path
 
@@ -21,6 +20,7 @@ class MockAdapter(AgentAdapter):
         script = r'''
 import json
 import sys
+import sys
 import time
 from pathlib import Path
 
@@ -30,6 +30,15 @@ agent = sys.argv[3]
 workdir = Path.cwd()
 if node_id in {"alpha", "beta"}:
     time.sleep(0.25)
+if node_id == "slow":
+    for _ in range(200):
+        time.sleep(0.05)
+if node_id == "flaky":
+    marker = workdir / ".flaky"
+    if not marker.exists():
+        marker.write_text("first failure", encoding="utf-8")
+        print("transient failure", file=sys.stderr)
+        raise SystemExit(3)
 if node_id == "writer":
     (workdir / "artifact.txt").write_text("file data", encoding="utf-8")
 if agent == "codex":
@@ -119,3 +128,63 @@ async def test_orchestrator_applies_success_criteria(tmp_path: Path):
     completed = await orchestrator.wait(run.id, timeout=5)
     assert completed.nodes["writer"].status.value == "completed"
     assert (tmp_path / "artifact.txt").read_text(encoding="utf-8") == "file data"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_retries_failed_nodes(tmp_path: Path):
+    orchestrator = make_orchestrator(tmp_path)
+    pipeline = PipelineSpec.model_validate(
+        {
+            "name": "retry",
+            "working_dir": str(tmp_path),
+            "nodes": [
+                {
+                    "id": "flaky",
+                    "agent": "codex",
+                    "prompt": "recovered",
+                    "retries": 1,
+                    "retry_backoff_seconds": 0.01,
+                }
+            ],
+        }
+    )
+    run = await orchestrator.submit(pipeline)
+    completed = await orchestrator.wait(run.id, timeout=5)
+    node = completed.nodes["flaky"]
+    assert completed.status.value == "completed"
+    assert node.status.value == "completed"
+    assert node.current_attempt == 2
+    assert len(node.attempts) == 2
+    assert node.attempts[0].status.value == "failed"
+    assert node.attempts[1].status.value == "completed"
+    assert orchestrator.store.read_artifact_text(completed.id, "flaky", "output.txt") == "recovered"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_cancels_running_nodes(tmp_path: Path):
+    orchestrator = make_orchestrator(tmp_path)
+    pipeline = PipelineSpec.model_validate(
+        {
+            "name": "cancel",
+            "working_dir": str(tmp_path),
+            "nodes": [
+                {
+                    "id": "slow",
+                    "agent": "codex",
+                    "prompt": "eventually cancelled",
+                    "timeout_seconds": 30,
+                }
+            ],
+        }
+    )
+    run = await orchestrator.submit(pipeline)
+    for _ in range(50):
+        snapshot = orchestrator.store.get_run(run.id)
+        if snapshot.status.value == "running":
+            break
+        await asyncio.sleep(0.05)
+    await orchestrator.cancel(run.id)
+    completed = await orchestrator.wait(run.id, timeout=5)
+    assert completed.status.value == "cancelled"
+    assert completed.nodes["slow"].status.value == "cancelled"
+    assert "Cancelled by user" in orchestrator.store.read_artifact_text(completed.id, "slow", "stderr.log")

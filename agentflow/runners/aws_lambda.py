@@ -11,10 +11,12 @@ from agentflow.specs import AwsLambdaTarget, NodeSpec
 
 
 class AwsLambdaRunner(Runner):
-    async def execute(self, node: NodeSpec, prepared: PreparedExecution, paths: ExecutionPaths, on_output):
+    async def execute(self, node: NodeSpec, prepared: PreparedExecution, paths: ExecutionPaths, on_output, should_cancel):
         target = node.target
         if not isinstance(target, AwsLambdaTarget):
             raise TypeError("AwsLambdaRunner requires an AwsLambdaTarget")
+        if should_cancel():
+            return RawExecutionResult(exit_code=130, stdout_lines=[], stderr_lines=["Cancelled before Lambda invocation"], cancelled=True)
         payload = {
             "command": prepared.command,
             "env": prepared.env,

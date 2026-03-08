@@ -26,16 +26,22 @@ class CaptureMode(StrEnum):
 
 class NodeStatus(StrEnum):
     PENDING = "pending"
+    QUEUED = "queued"
     READY = "ready"
     RUNNING = "running"
+    RETRYING = "retrying"
     COMPLETED = "completed"
     FAILED = "failed"
     SKIPPED = "skipped"
+    CANCELLED = "cancelled"
 
 
 class RunStatus(StrEnum):
     PENDING = "pending"
+    QUEUED = "queued"
     RUNNING = "running"
+    CANCELLING = "cancelling"
+    CANCELLED = "cancelled"
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -148,6 +154,8 @@ class NodeSpec(BaseModel):
     extra_args: list[str] = Field(default_factory=list)
     description: str | None = None
     success_criteria: list[SuccessCriterion] = Field(default_factory=list)
+    retries: int = 0
+    retry_backoff_seconds: float = 1.0
 
     @model_validator(mode="after")
     def ensure_unique_dependencies(self) -> "NodeSpec":
@@ -162,6 +170,7 @@ class PipelineSpec(BaseModel):
     description: str | None = None
     working_dir: str = "."
     concurrency: int = 4
+    fail_fast: bool = False
     nodes: list[NodeSpec]
 
     @model_validator(mode="after")
@@ -178,7 +187,27 @@ class PipelineSpec(BaseModel):
         }
         if missing:
             raise ValueError(f"unknown dependencies: {sorted(missing)}")
+        self._validate_acyclic_graph()
         return self
+
+    def _validate_acyclic_graph(self) -> None:
+        visited: set[str] = set()
+        visiting: set[str] = set()
+
+        def visit(node_id: str, graph: dict[str, NodeSpec]) -> None:
+            if node_id in visiting:
+                raise ValueError(f"cycle detected involving node {node_id!r}")
+            if node_id in visited:
+                return
+            visiting.add(node_id)
+            for dependency in graph[node_id].depends_on:
+                visit(dependency, graph)
+            visiting.remove(node_id)
+            visited.add(node_id)
+
+        graph = self.node_map
+        for node_id in graph:
+            visit(node_id, graph)
 
     @property
     def node_map(self) -> dict[str, NodeSpec]:
@@ -195,11 +224,26 @@ class NormalizedTraceEvent(BaseModel):
     timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     node_id: str
     agent: AgentKind
+    attempt: int = 1
     source: Literal["stdout", "stderr", "system"] = "stdout"
     kind: str
     title: str
     content: str | None = None
     raw: Any | None = None
+
+
+class NodeAttempt(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    number: int
+    status: NodeStatus = NodeStatus.PENDING
+    started_at: str | None = None
+    finished_at: str | None = None
+    exit_code: int | None = None
+    final_response: str | None = None
+    output: str | None = None
+    success: bool | None = None
+    success_details: list[str] = Field(default_factory=list)
 
 
 class NodeResult(BaseModel):
@@ -217,15 +261,18 @@ class NodeResult(BaseModel):
     trace_events: list[NormalizedTraceEvent] = Field(default_factory=list)
     success: bool | None = None
     success_details: list[str] = Field(default_factory=list)
+    current_attempt: int = 0
+    attempts: list[NodeAttempt] = Field(default_factory=list)
 
 
 class RunRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
-    status: RunStatus = RunStatus.PENDING
+    status: RunStatus = RunStatus.QUEUED
     pipeline: PipelineSpec
-    started_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    started_at: str | None = None
     finished_at: str | None = None
     nodes: dict[str, NodeResult] = Field(default_factory=dict)
 

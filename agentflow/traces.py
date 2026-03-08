@@ -42,6 +42,7 @@ def _stringify(value: Any) -> str:
 class BaseTraceParser:
     node_id: str
     agent: AgentKind
+    attempt: int = 1
     final_chunks: list[str] = field(default_factory=list)
     last_message: str | None = None
 
@@ -49,12 +50,18 @@ class BaseTraceParser:
         return NormalizedTraceEvent(
             node_id=self.node_id,
             agent=self.agent,
+            attempt=self.attempt,
             source=source,
             kind=kind,
             title=title,
             content=content,
             raw=raw,
         )
+
+    def start_attempt(self, attempt: int) -> None:
+        self.attempt = attempt
+        self.final_chunks.clear()
+        self.last_message = None
 
     def remember(self, text: str | None) -> None:
         if text:
