@@ -1898,6 +1898,7 @@ def test_run_show_preflight_prints_successful_summary_to_stderr(monkeypatch):
     fake_pipeline = SimpleNamespace(
         nodes=[
             SimpleNamespace(
+                id="codex_plan",
                 agent=SimpleNamespace(value="codex"),
                 target=SimpleNamespace(kind="local", shell="bash", shell_interactive=True, shell_init="kimi"),
             )
@@ -1908,7 +1909,12 @@ def test_run_show_preflight_prints_successful_summary_to_stderr(monkeypatch):
     result = runner.invoke(app, ["run", "custom-run.yaml", "--output", "summary", "--show-preflight"])
 
     assert result.exit_code == 0
-    assert result.stderr == "Doctor: ok\n- kimi_shell_helper: ok - ready\n"
+    assert result.stderr == (
+        "Doctor: ok\n"
+        "- kimi_shell_helper: ok - ready\n"
+        "Pipeline auto preflight: enabled - local Codex/Claude/Kimi nodes use a `kimi` shell bootstrap.\n"
+        "Pipeline auto preflight matches: codex_plan (codex) via `target.shell_init`\n"
+    )
     assert "Run run-show-preflight: completed" in result.stdout
     assert captured["loaded_path"] == "custom-run.yaml"
     assert captured["submitted_pipeline"] is fake_pipeline
@@ -1961,6 +1967,8 @@ def test_run_auto_preflight_stops_when_local_codex_auth_is_unavailable(monkeypat
         "Doctor: failed\n"
         "- kimi_shell_helper: ok - ready\n"
         "- codex_auth: failed - Node `codex_plan` (codex) cannot authenticate local Codex after the node shell bootstrap; `codex login status` fails and `OPENAI_API_KEY` is not set in the current environment, `node.env`, or `provider.env`.\n"
+        "Pipeline auto preflight: enabled - local Codex/Claude/Kimi nodes use a `kimi` shell bootstrap.\n"
+        "Pipeline auto preflight matches: codex_plan (codex) via `target.shell_init`\n"
     )
 
 
@@ -2415,13 +2423,31 @@ def test_smoke_show_preflight_prints_successful_summary_to_stderr(monkeypatch):
         lambda runs_dir, max_concurrent_runs: (SimpleNamespace(run_dir=lambda run_id: Path(runs_dir) / run_id), FakeOrchestrator()),
     )
     monkeypatch.setattr(agentflow.cli, "default_smoke_pipeline_path", lambda: "examples/local-real-agents-kimi-smoke.yaml")
-    fake_pipeline = object()
+    fake_pipeline = SimpleNamespace(
+        nodes=[
+            SimpleNamespace(
+                id="codex_plan",
+                agent=SimpleNamespace(value="codex"),
+                target=SimpleNamespace(kind="local", shell="bash", shell_login=True, shell_interactive=True, shell_init="kimi"),
+            ),
+            SimpleNamespace(
+                id="claude_review",
+                agent=SimpleNamespace(value="claude"),
+                target=SimpleNamespace(kind="local", shell="bash", shell_login=True, shell_interactive=True, shell_init="kimi"),
+            ),
+        ]
+    )
     monkeypatch.setattr(agentflow.cli, "_load_pipeline", _capture_pipeline_loader(captured, fake_pipeline))
 
     result = runner.invoke(app, ["smoke", "--show-preflight"])
 
     assert result.exit_code == 0
-    assert result.stderr == "Doctor: ok\n- kimi_shell_helper: ok - ready\n"
+    assert result.stderr == (
+        "Doctor: ok\n"
+        "- kimi_shell_helper: ok - ready\n"
+        "Pipeline auto preflight: enabled - path matches the bundled real-agent smoke pipeline.\n"
+        "Pipeline auto preflight matches: codex_plan (codex) via `target.shell_init`, claude_review (claude) via `target.shell_init`\n"
+    )
     assert "Run smoke-show-preflight: completed" in result.stdout
     assert captured["loaded_path"] == "examples/local-real-agents-kimi-smoke.yaml"
     assert captured["submitted_pipeline"] is fake_pipeline
@@ -2444,12 +2470,34 @@ def test_smoke_show_preflight_keeps_json_stdout_machine_readable(monkeypatch):
         lambda runs_dir, max_concurrent_runs: (SimpleNamespace(run_dir=lambda run_id: Path(runs_dir) / run_id), FakeOrchestrator()),
     )
     monkeypatch.setattr(agentflow.cli, "default_smoke_pipeline_path", lambda: "examples/local-real-agents-kimi-smoke.yaml")
-    monkeypatch.setattr(agentflow.cli, "_load_pipeline", lambda path: object())
+    monkeypatch.setattr(
+        agentflow.cli,
+        "_load_pipeline",
+        lambda path: SimpleNamespace(
+            nodes=[
+                SimpleNamespace(
+                    id="codex_plan",
+                    agent=SimpleNamespace(value="codex"),
+                    target=SimpleNamespace(kind="local", shell="bash", shell_login=True, shell_interactive=True, shell_init="kimi"),
+                ),
+                SimpleNamespace(
+                    id="claude_review",
+                    agent=SimpleNamespace(value="claude"),
+                    target=SimpleNamespace(kind="local", shell="bash", shell_login=True, shell_interactive=True, shell_init="kimi"),
+                ),
+            ]
+        ),
+    )
 
     result = runner.invoke(app, ["smoke", "--output", "json", "--show-preflight"])
 
     assert result.exit_code == 0
-    assert result.stderr == "Doctor: ok\n- kimi_shell_helper: ok - ready\n"
+    assert result.stderr == (
+        "Doctor: ok\n"
+        "- kimi_shell_helper: ok - ready\n"
+        "Pipeline auto preflight: enabled - path matches the bundled real-agent smoke pipeline.\n"
+        "Pipeline auto preflight matches: codex_plan (codex) via `target.shell_init`, claude_review (claude) via `target.shell_init`\n"
+    )
     assert json.loads(result.stdout) == {"id": "smoke-show-preflight-json", "status": "completed"}
 
 
