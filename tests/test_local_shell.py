@@ -125,6 +125,42 @@ def test_kimi_shell_init_requires_interactive_bash_warning_accepts_bash_env_boot
     assert kimi_shell_init_requires_interactive_bash_warning(target) is None
 
 
+def test_kimi_shell_init_requires_interactive_bash_warning_accepts_home_bashrc_via_bash_env_without_guard(
+    tmp_path: Path,
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".bashrc").write_text("kimi(){ :; }\n", encoding="utf-8")
+    target = {
+        "kind": "local",
+        "shell": "env BASH_ENV=$HOME/.bashrc bash -c",
+        "shell_init": "kimi",
+    }
+
+    assert kimi_shell_init_requires_interactive_bash_warning(target, home=home) is None
+
+
+def test_kimi_shell_init_requires_interactive_bash_warning_rejects_home_bashrc_via_bash_env_with_noninteractive_guard(
+    tmp_path: Path,
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".bashrc").write_text(
+        "case $- in\n    *i*) ;;\n      *) return;;\nesac\n\nkimi(){ :; }\n",
+        encoding="utf-8",
+    )
+    target = {
+        "kind": "local",
+        "shell": "env BASH_ENV=$HOME/.bashrc bash -c",
+        "shell_init": "kimi",
+    }
+
+    assert kimi_shell_init_requires_interactive_bash_warning(target, home=home) == (
+        "`shell_init: kimi` uses bash without interactive startup; helpers from `~/.bashrc` are usually "
+        "unavailable. Set `target.shell_interactive: true` or use `bash -lic`."
+    )
+
+
 def test_kimi_shell_init_requires_interactive_bash_warning_ignores_plain_text_kimi_output():
     target = {
         "kind": "local",
