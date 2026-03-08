@@ -167,6 +167,35 @@ def test_kimi_adapter_uses_current_python_by_default(tmp_path):
     assert prepared.command[1:3] == ["-m", "agentflow.remote.kimi_bridge"]
 
 
+def test_kimi_adapter_prefers_repo_venv_python_when_current_python_is_outside_it(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_python = repo_root / ".venv" / "bin" / "python"
+    repo_python.parent.mkdir(parents=True)
+    repo_python.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+
+    node = NodeSpec.model_validate(
+        {
+            "id": "review",
+            "agent": "kimi",
+            "prompt": "Review",
+        }
+    )
+    paths = ExecutionPaths(
+        host_workdir=tmp_path,
+        host_runtime_dir=tmp_path / ".runtime",
+        target_workdir=str(tmp_path),
+        target_runtime_dir=str(tmp_path / ".runtime"),
+        app_root=repo_root,
+    )
+
+    monkeypatch.setattr("agentflow.agents.kimi.sys.executable", "/usr/bin/python3")
+
+    prepared = KimiAdapter().prepare(node, "Review", paths)
+
+    assert prepared.command[0] == str(repo_python)
+    assert prepared.command[1:3] == ["-m", "agentflow.remote.kimi_bridge"]
+
+
 def test_claude_adapter_prefers_node_env_over_provider_env(tmp_path):
     node = NodeSpec.model_validate(
         {

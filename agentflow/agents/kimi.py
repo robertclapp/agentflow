@@ -10,6 +10,21 @@ from agentflow.prepared import ExecutionPaths, PreparedExecution
 from agentflow.specs import NodeSpec
 
 
+def _default_kimi_executable(paths: ExecutionPaths) -> str:
+    current_python = Path(sys.executable).expanduser() if sys.executable else None
+    repo_venv_python = paths.app_root / ".venv" / "bin" / "python"
+
+    if repo_venv_python.is_file() and current_python is not None:
+        try:
+            current_python.relative_to(repo_venv_python.parent.parent)
+        except ValueError:
+            return str(repo_venv_python)
+
+    if current_python is not None:
+        return str(current_python)
+    return "python3"
+
+
 class KimiAdapter(AgentAdapter):
     def prepare(self, node: NodeSpec, prompt: str, paths: ExecutionPaths) -> PreparedExecution:
         provider = self.provider_config(node.provider, node.agent)
@@ -26,7 +41,7 @@ class KimiAdapter(AgentAdapter):
         }
         relative_path = self.relative_runtime_file("kimi-request.json")
         runtime_files = {relative_path: json.dumps(request, ensure_ascii=False, indent=2)}
-        executable = node.executable or sys.executable or "python3"
+        executable = node.executable or _default_kimi_executable(paths)
         command = [
             executable,
             "-m",
