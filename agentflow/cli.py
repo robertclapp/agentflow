@@ -237,10 +237,10 @@ def smoke(
     if path is None:
         report = _doctor_report()
         if report.status == "failed":
-            _echo_doctor_report(report)
+            _echo_doctor_report(report, output=output)
             raise typer.Exit(code=1)
         if report.status == "warning":
-            _echo_doctor_report(report, err=True)
+            _echo_doctor_report(report, output=output, err=True)
     _run_pipeline_path(path or default_smoke_pipeline_path(), runs_dir, max_concurrent_runs, output)
 
 

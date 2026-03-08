@@ -72,6 +72,8 @@ The bundled smoke now launches both `codex` and `claude` inside `bash -lic` so l
 
 By default, `agentflow smoke` now prints a compact per-node summary instead of the full run record JSON. Use `agentflow smoke --output json` when you want the complete machine-readable payload.
 
+The bundled smoke preflight now matches that output mode too, so warning and failure reports stay in summary form by default and switch to JSON when you pass `--output json`.
+
 Check the local Codex/Claude/Kimi smoke prerequisites without launching a run:
 
 ```bash
