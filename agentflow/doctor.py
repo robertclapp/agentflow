@@ -14,6 +14,7 @@ _CODEX_IN_SHELL_MISSING_EXIT_CODE = 10
 _KIMI_HELPER_MISSING_EXIT_CODE = 11
 _CLAUDE_IN_SHELL_MISSING_EXIT_CODE = 12
 _KIMI_API_KEY_MISSING_EXIT_CODE = 13
+_CODEX_AFTER_KIMI_MISSING_EXIT_CODE = 14
 
 
 def _strip_shell_comments(line: str) -> str:
@@ -236,6 +237,7 @@ def _check_kimi_shell_helper(home: Path | None = None) -> DoctorCheck:
             "kimi >/dev/null || exit $?",
             f'[ -n "${{ANTHROPIC_API_KEY:-}}" ] || exit {_KIMI_API_KEY_MISSING_EXIT_CODE}',
             f"type {shlex.quote('claude')} >/dev/null 2>&1 || exit {_CLAUDE_IN_SHELL_MISSING_EXIT_CODE}",
+            f"type {shlex.quote('codex')} >/dev/null 2>&1 || exit {_CODEX_AFTER_KIMI_MISSING_EXIT_CODE}",
         ]
     )
     try:
@@ -250,7 +252,7 @@ def _check_kimi_shell_helper(home: Path | None = None) -> DoctorCheck:
         return DoctorCheck(
             name="kimi_shell_helper",
             status="failed",
-            detail=f"Could not launch `bash -lic` to verify `kimi` and `claude`: {exc}",
+            detail=f"Could not launch `bash -lic` to verify `kimi`, `claude`, and `codex`: {exc}",
         )
     if result.returncode == 0:
         return DoctorCheck(
@@ -258,7 +260,7 @@ def _check_kimi_shell_helper(home: Path | None = None) -> DoctorCheck:
             status="ok",
             detail=(
                 "`kimi` is available in `bash -lic`, exports `ANTHROPIC_API_KEY`, "
-                "and keeps `claude` available for the bundled smoke pipeline."
+                "and keeps both `claude` and `codex` available for the bundled smoke pipeline."
             ),
         )
     if result.returncode == _KIMI_HELPER_MISSING_EXIT_CODE:
@@ -274,6 +276,15 @@ def _check_kimi_shell_helper(home: Path | None = None) -> DoctorCheck:
             detail=(
                 "`kimi` runs in `bash -lic`, but `claude` is unavailable afterwards; "
                 "the bundled smoke pipeline will not be able to launch Claude-on-Kimi."
+            ),
+        )
+    if result.returncode == _CODEX_AFTER_KIMI_MISSING_EXIT_CODE:
+        return DoctorCheck(
+            name="kimi_shell_helper",
+            status="failed",
+            detail=(
+                "`kimi` runs in `bash -lic`, but `codex` is unavailable afterwards; "
+                "the bundled smoke pipeline will not be able to launch Codex inside that shared Kimi bootstrap."
             ),
         )
     if result.returncode == _KIMI_API_KEY_MISSING_EXIT_CODE:
