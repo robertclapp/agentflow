@@ -92,6 +92,30 @@ def test_local_smoke_doctor_report_ok_with_absolute_home_bridge(tmp_path: Path, 
     }
 
 
+def test_local_smoke_doctor_report_accepts_symlinked_home_bashrc(tmp_path: Path, monkeypatch):
+    home = tmp_path / "home"
+    dotfiles = tmp_path / "dotfiles"
+    home.mkdir()
+    dotfiles.mkdir()
+    (home / ".profile").write_text('if [ -f "$HOME/.bashrc" ]; then . "$HOME/.bashrc"; fi\n', encoding="utf-8")
+    (dotfiles / "bashrc").write_text("kimi(){ :; }\n", encoding="utf-8")
+    (home / ".bashrc").symlink_to(dotfiles / "bashrc")
+
+    monkeypatch.setattr("agentflow.doctor.shutil.which", lambda name: f"/tmp/{name}")
+    monkeypatch.setattr(
+        "agentflow.doctor.subprocess.run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args=args[0], returncode=11, stdout="", stderr=""),
+    )
+
+    report = build_local_smoke_doctor_report(home=home)
+
+    assert report.as_dict()["checks"][2] == {
+        "name": "bash_login_startup",
+        "status": "ok",
+        "detail": "Bash login shells fall back to `~/.profile` because neither `~/.bash_profile` nor `~/.bash_login` exists, and it references `~/.bashrc`.",
+    }
+
+
 def test_local_smoke_doctor_report_follows_transitive_profile_bridge(tmp_path: Path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
@@ -840,6 +864,20 @@ def test_shell_bridge_recommendation_is_none_when_login_chain_already_reaches_ba
     home.mkdir()
     (home / ".profile").write_text('if [ -f "$HOME/.bashrc" ]; then . "$HOME/.bashrc"; fi\n', encoding="utf-8")
     (home / ".bashrc").write_text("kimi(){ :; }\n", encoding="utf-8")
+
+    recommendation = build_bash_login_shell_bridge_recommendation(home=home)
+
+    assert recommendation is None
+
+
+def test_shell_bridge_recommendation_is_none_when_home_bashrc_is_symlinked(tmp_path: Path):
+    home = tmp_path / "home"
+    dotfiles = tmp_path / "dotfiles"
+    home.mkdir()
+    dotfiles.mkdir()
+    (home / ".profile").write_text('if [ -f "$HOME/.bashrc" ]; then . "$HOME/.bashrc"; fi\n', encoding="utf-8")
+    (dotfiles / "bashrc").write_text("kimi(){ :; }\n", encoding="utf-8")
+    (home / ".bashrc").symlink_to(dotfiles / "bashrc")
 
     recommendation = build_bash_login_shell_bridge_recommendation(home=home)
 

@@ -79,16 +79,18 @@ def _resolve_home_shell_source_target(token: str, home: Path) -> Path | None:
 
     resolved_home = home.resolve()
     if normalized.startswith("~/"):
-        candidate = (resolved_home / normalized[2:]).resolve()
+        candidate = resolved_home / normalized[2:]
     elif normalized.startswith("$HOME/"):
-        candidate = (resolved_home / normalized[6:]).resolve()
+        candidate = resolved_home / normalized[6:]
     elif normalized.startswith("${HOME}/"):
-        candidate = (resolved_home / normalized[8:]).resolve()
+        candidate = resolved_home / normalized[8:]
     elif normalized.startswith("$"):
         return None
     else:
         raw_path = Path(normalized)
-        candidate = raw_path.resolve() if raw_path.is_absolute() else (resolved_home / raw_path).resolve()
+        candidate = raw_path if raw_path.is_absolute() else resolved_home / raw_path
+
+    candidate = Path(os.path.normpath(str(candidate)))
 
     try:
         candidate.relative_to(resolved_home)
@@ -107,7 +109,7 @@ def _shell_sources_file(text: str, filename: str, home: Path | None = None) -> b
         }
         return any(token.rstrip(";)") in accepted_targets for token in _iter_shell_source_targets(text))
 
-    target = (home / filename).resolve()
+    target = Path(os.path.normpath(str(home.resolve() / filename)))
     return any(
         resolved == target
         for token in _iter_shell_source_targets(text)
@@ -116,7 +118,9 @@ def _shell_sources_file(text: str, filename: str, home: Path | None = None) -> b
 
 
 def _home_relative_shell_path(home: Path, path: Path) -> str:
-    return path.resolve().relative_to(home.resolve()).as_posix()
+    normalized_home = home.resolve()
+    normalized_path = Path(os.path.normpath(str(path if path.is_absolute() else normalized_home / path)))
+    return normalized_path.relative_to(normalized_home).as_posix()
 
 
 def _shell_startup_read_error(home: Path, path: Path, exc: OSError) -> _ShellStartupReadError:
@@ -303,7 +307,7 @@ def _bash_startup_chain_to_bashrc(
         return None
 
     resolved_home = home.resolve()
-    bashrc_path = (resolved_home / ".bashrc").resolve()
+    bashrc_path = Path(os.path.normpath(str(resolved_home / ".bashrc")))
     try:
         text = startup_file.read_text(encoding="utf-8", errors="ignore")
     except OSError as exc:
