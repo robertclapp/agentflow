@@ -36,6 +36,9 @@ _BASHRC_SOURCE_COMMANDS = {".", "source"}
 _COMMAND_SUBSTITUTION_PATTERN = re.compile(r"(?:\$|<)\(([^()]*)\)")
 _BACKTICK_COMMAND_SUBSTITUTION_PATTERN = re.compile(r"(?<!\\)`([^`]*)`")
 _HOME_REFERENCE_PATTERN = re.compile(r"\$(?:\{HOME\}|HOME)")
+_SHELL_VARIABLE_REFERENCE_PATTERN = re.compile(
+    r"^\$(?:\{(?P<braced>[A-Za-z_][A-Za-z0-9_]*)(?::[-+?=][^}]*)?\}|(?P<plain>[A-Za-z_][A-Za-z0-9_]*))$"
+)
 _BASHRC_NONINTERACTIVE_GUARDS = (
     re.compile(r"case\s+\$-\s+in(?s:.*?)\*\)\s*return\s*;;"),
     re.compile(r"\[\[\s*\$-\s*!=\s*\*i\*\s*\]\]\s*&&\s*return"),
@@ -72,6 +75,10 @@ def _token_resets_command_position(token: str) -> bool:
     if stripped in _SHELL_CONTROL_TOKENS:
         return True
     return stripped.endswith((";", "&&", "||", "|"))
+
+
+def _is_pure_control_token(token: str) -> bool:
+    return token.strip() in _SHELL_CONTROL_TOKENS
 
 
 def shell_init_commands(shell_init: Any) -> tuple[str, ...]:
@@ -117,6 +124,10 @@ def _looks_like_kimi_token(token: str) -> bool:
 
 def _normalize_shell_token(token: str) -> str:
     return token.strip().lstrip("({[").rstrip(";|&)}]\n\r\t ")
+
+
+def _normalize_shell_expression_token(token: str) -> str:
+    return token.strip().rstrip(";|&\n\r\t ")
 
 
 def _looks_like_bashrc_path(token: str) -> bool:
@@ -506,6 +517,25 @@ def _token_uses_kimi_substitution(token: str) -> bool:
     return False
 
 
+def _token_assigns_kimi_substitution(token: str) -> str | None:
+    normalized = _normalize_shell_expression_token(token)
+    if not _looks_like_env_assignment(normalized):
+        return None
+    name, value = normalized.split("=", 1)
+    if not _token_uses_kimi_substitution(value):
+        return None
+    return name
+
+
+def _token_references_shell_var_from_kimi(token: str, shell_vars_from_kimi: set[str]) -> bool:
+    normalized = _normalize_shell_expression_token(token)
+    match = _SHELL_VARIABLE_REFERENCE_PATTERN.match(normalized)
+    if match is None:
+        return False
+    variable_name = match.group("braced") or match.group("plain")
+    return bool(variable_name and variable_name in shell_vars_from_kimi)
+
+
 def invalid_bash_long_option_error(command: str | None) -> str | None:
     tokens = _split_shell_parts(command)
     for index, token in enumerate(tokens):
@@ -622,9 +652,23 @@ def shell_command_uses_kimi_helper(command: str | None) -> bool:
     expects_command = True
     prefix_allows_options = False
     active_command: str | None = None
+    pending_shell_assignments_from_kimi: set[str] = set()
+    shell_vars_from_kimi: set[str] = set()
     for index, token in enumerate(tokens):
-        if active_command in _KIMI_SUBSTITUTION_CONSUMERS and _token_uses_kimi_substitution(token):
-            return True
+        assigned_var = _token_assigns_kimi_substitution(token)
+        if _is_pure_control_token(token):
+            if expects_command and pending_shell_assignments_from_kimi:
+                shell_vars_from_kimi.update(pending_shell_assignments_from_kimi)
+            expects_command = True
+            prefix_allows_options = False
+            active_command = None
+            pending_shell_assignments_from_kimi.clear()
+            continue
+        if active_command in _KIMI_SUBSTITUTION_CONSUMERS:
+            if _token_uses_kimi_substitution(token):
+                return True
+            if _token_references_shell_var_from_kimi(token, shell_vars_from_kimi):
+                return True
         if _looks_like_kimi_token(token) and not _is_kimi_probe_argument(tokens, index):
             if expects_command:
                 return True
@@ -635,16 +679,24 @@ def shell_command_uses_kimi_helper(command: str | None) -> bool:
                 prefix_allows_options = True
                 continue
             if _looks_like_env_assignment(token):
+                if assigned_var is not None:
+                    pending_shell_assignments_from_kimi.add(assigned_var)
                 continue
             if prefix_allows_options and (token == "--" or token.startswith("-")):
                 continue
             expects_command = False
             prefix_allows_options = False
             active_command = os.path.basename(token)
+            pending_shell_assignments_from_kimi.clear()
+        elif active_command in {"export", *_EXPORT_STYLE_COMMANDS} and assigned_var is not None:
+            shell_vars_from_kimi.add(assigned_var)
         if _token_resets_command_position(token):
+            if expects_command and pending_shell_assignments_from_kimi:
+                shell_vars_from_kimi.update(pending_shell_assignments_from_kimi)
             expects_command = True
             prefix_allows_options = False
             active_command = None
+            pending_shell_assignments_from_kimi.clear()
     return False
 
 
