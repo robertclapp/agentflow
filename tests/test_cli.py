@@ -1241,6 +1241,8 @@ nodes:
             checks=[DoctorCheck(name="kimi_shell_helper", status="ok", detail="ready")],
         ),
     )
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "super-secret")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://open.bigmodel.cn/api/anthropic")
     monkeypatch.setattr(
         agentflow.cli,
         "_run_pipeline",
@@ -2146,6 +2148,8 @@ def test_run_stops_when_detected_preflight_fails(monkeypatch):
 
     monkeypatch.setattr(agentflow.cli, "build_local_smoke_doctor_report", lambda: _doctor_report(status="failed", detail="missing"))
     monkeypatch.setattr(agentflow.cli, "default_smoke_pipeline_path", lambda: bundled_path)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "super-secret")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://open.bigmodel.cn/api/anthropic")
     monkeypatch.setattr(agentflow.cli, "_load_pipeline", lambda path: (_ for _ in ()).throw(AssertionError("pipeline should not load")))
     monkeypatch.setattr(agentflow.cli, "_build_runtime", lambda runs_dir, max_concurrent_runs: (_ for _ in ()).throw(AssertionError("runtime should not build")))
 
@@ -3826,6 +3830,8 @@ nodes:
 def test_smoke_stops_when_bundled_preflight_fails(monkeypatch):
     monkeypatch.setattr(agentflow.cli, "build_local_smoke_doctor_report", lambda: _doctor_report(status="failed", detail="missing"))
     monkeypatch.setattr(agentflow.cli, "default_smoke_pipeline_path", lambda: "examples/local-real-agents-kimi-smoke.yaml")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "super-secret")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://open.bigmodel.cn/api/anthropic")
     monkeypatch.setattr(agentflow.cli, "_load_pipeline", lambda path: (_ for _ in ()).throw(AssertionError("pipeline should not load")))
 
     result = runner.invoke(app, ["smoke"])

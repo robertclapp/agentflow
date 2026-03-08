@@ -585,14 +585,18 @@ def _merge_doctor_status(current_status: str, extra_checks: list[DoctorCheck]) -
 
 
 def _augment_preflight_report(report: object, pipeline: object) -> object:
-    extra_checks = [
+    report = _extend_doctor_report(
+        report,
+        [
         *_pipeline_kimi_shell_bootstrap_checks(pipeline),
-        *_pipeline_launch_env_override_checks(pipeline),
         *_pipeline_provider_credential_checks(pipeline),
         *build_pipeline_local_claude_readiness_checks(pipeline),
         *build_pipeline_local_codex_auth_checks(pipeline),
-    ]
-    return _extend_doctor_report(report, extra_checks)
+        ],
+    )
+    if _status_value(getattr(report, "status", "ok")) == "failed":
+        return report
+    return _extend_doctor_report(report, _pipeline_launch_env_override_checks(pipeline))
 
 
 def _auto_smoke_preflight_reason(path: str, pipeline: object) -> str | None:
@@ -666,7 +670,7 @@ def _load_pipeline_with_optional_smoke_preflight(
         report = _doctor_report()
         if pipeline is not None:
             report = _augment_preflight_report(report, pipeline)
-        elif selected_path_matches_bundled:
+        elif selected_path_matches_bundled and _status_value(getattr(report, "status", "ok")) != "failed":
             pipeline = _load_pipeline(selected_path)
             report = _extend_doctor_report(report, _pipeline_launch_env_override_checks(pipeline))
         doctor_output = _structured_output_from_run_output(output)
