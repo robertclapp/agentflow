@@ -2,9 +2,12 @@
 
 .PHONY: help test inspect-local doctor-local smoke-local check-local
 
+PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
+
 help:
 	@printf '%s\n' \
 	  'Available targets:' \
+	  '  python        Prefer .venv/bin/python when available, else python3' \
 	  '  test          Run the Python test suite' \
 	  '  inspect-local Inspect the bundled local Kimi-backed smoke pipeline' \
 	  '  doctor-local  Check local Codex/Claude/Kimi smoke prerequisites' \
@@ -12,15 +15,15 @@ help:
 	  '  check-local   Run doctor-local, then smoke-local'
 
 test:
-	python3 -m pytest -q
+	$(PYTHON) -m pytest -q
 
 inspect-local:
-	python3 -m agentflow inspect examples/local-real-agents-kimi-smoke.yaml --output summary
+	$(PYTHON) -m agentflow inspect examples/local-real-agents-kimi-smoke.yaml --output summary
 
 doctor-local:
-	python3 -m agentflow doctor examples/local-real-agents-kimi-smoke.yaml --output summary
+	$(PYTHON) -m agentflow doctor examples/local-real-agents-kimi-smoke.yaml --output summary
 
 smoke-local:
-	python3 -m agentflow smoke --show-preflight
+	$(PYTHON) -m agentflow smoke --show-preflight
 
 check-local: doctor-local smoke-local
