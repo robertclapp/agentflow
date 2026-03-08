@@ -23,6 +23,7 @@ from agentflow.utils import looks_sensitive_key, redact_sensitive_shell_text, re
 
 _REDACTED = "<redacted>"
 _GENERATED = "<generated>"
+_INSPECT_PLACEHOLDER_PREFIX = "<inspect placeholder for nodes."
 
 
 def _auto_preflight_summary(value: Any) -> str | None:
@@ -63,6 +64,10 @@ def _command_text(command: list[str] | None) -> str | None:
 
 def _placeholder_text(node_id: str, field: str) -> str:
     return f"<inspect placeholder for nodes.{node_id}.{field}>"
+
+
+def _prompt_uses_placeholder_results(prompt: str) -> bool:
+    return _INSPECT_PLACEHOLDER_PREFIX in prompt
 
 
 def _build_placeholder_results(pipeline: PipelineSpec) -> dict[str, NodeResult]:
@@ -355,12 +360,14 @@ def build_launch_inspection(
     placeholder_results = _build_placeholder_results(pipeline)
     base_dir = Path(runs_dir).expanduser().resolve()
     inspected_nodes: list[dict[str, Any]] = []
+    uses_placeholder_results = False
 
     for node in pipeline.nodes:
         if requested_nodes and node.id not in requested_nodes:
             continue
 
         prompt, render_error = _render_prompt_for_inspection(pipeline, node, placeholder_results)
+        uses_placeholder_results = uses_placeholder_results or _prompt_uses_placeholder_results(prompt)
         resolved_provider = resolve_provider(node.provider, node.agent)
         paths = build_execution_paths(
             base_dir=base_dir,
@@ -418,7 +425,7 @@ def build_launch_inspection(
         inspected_nodes.append(node_plan)
 
     notes: list[str] = []
-    if any("nodes." in node.prompt for node in pipeline.nodes):
+    if uses_placeholder_results:
         notes.append("Dependency references use placeholder node outputs because `inspect` does not execute the DAG.")
 
     return {

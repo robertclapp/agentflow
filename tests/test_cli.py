@@ -235,6 +235,27 @@ nodes:
     assert "Note: Dependency references use placeholder node outputs" not in result.stdout
 
 
+def test_inspect_command_omits_placeholder_note_for_plain_text_nodes_reference(tmp_path):
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        """name: inspect-plain-text-nodes
+working_dir: .
+nodes:
+  - id: plan
+    agent: codex
+    prompt: |
+      Explain why the string nodes.plan.output should stay literal in this doc example.
+""",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["inspect", str(pipeline_path)])
+
+    assert result.exit_code == 0
+    assert "Prompt: Explain why the string nodes.plan.output should stay literal in this doc example." in result.stdout
+    assert "Note: Dependency references use placeholder node outputs" not in result.stdout
+
+
 def test_inspect_command_supports_json_output_and_redacts_env(tmp_path, monkeypatch):
     pipeline_path = tmp_path / "pipeline.yaml"
     pipeline_path.write_text(
