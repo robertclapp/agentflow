@@ -78,6 +78,8 @@ Check the local Codex/Claude/Kimi smoke prerequisites without launching a run:
 agentflow doctor
 ```
 
+`agentflow doctor` prints JSON by default so CI and wrapper scripts can parse it directly. Use `agentflow doctor --output summary` when you want a quick human-readable checklist instead.
+
 Run the web console:
 
 ```bash
