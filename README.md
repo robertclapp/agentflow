@@ -72,7 +72,7 @@ agentflow smoke
 
 The bundled smoke now launches both `codex` and `claude` inside `bash -lic` so login-shell startup files are exercised for local CLI installs. Both nodes also run `kimi` first, which keeps the default smoke aligned with shared Kimi bootstrap setups where the same shell helper prepares both CLIs.
 
-By default, `agentflow smoke` now prints a compact per-node summary instead of the full run record JSON. Use `agentflow smoke --output json` when you want the complete machine-readable payload.
+By default, `agentflow smoke` now prints a compact per-node summary instead of the full run record JSON. Use `agentflow smoke --output json-summary` when you want a compact machine-readable payload for scripts, or `agentflow smoke --output json` when you want the complete persisted run record with stdout, stderr, and trace details.
 
 The bundled smoke preflight now matches that output mode too, so warning and failure reports stay in summary form by default and switch to JSON when you pass `--output json`.
 In the default `auto` mode, AgentFlow runs that preflight for the bundled smoke path, for explicit references to the bundled smoke file, and for custom local smoke pipelines that clearly bootstrap Codex or Claude through `kimi` in their local shell target. `agentflow run` now uses the same guard rails for those same pipeline shapes. Use `--preflight always` to force the same checks for other custom smoke pipelines, or `--preflight never` when you need to skip them.
@@ -106,6 +106,7 @@ CLI equivalents:
 agentflow serve --runs-dir .agentflow/runs --max-concurrent-runs 2
 agentflow run examples/pipeline.yaml --runs-dir .agentflow/runs --max-concurrent-runs 2
 agentflow run examples/pipeline.yaml --output summary
+agentflow run examples/pipeline.yaml --output json-summary
 ```
 
 ## Airflow-like Python DAG
@@ -299,7 +300,7 @@ You can run the same preflight directly:
 agentflow doctor
 ```
 
-The bundled smoke pipeline bootstraps the `kimi` shell helper inside the Claude node, so you do not need to wrap the entire `agentflow smoke` command in `bash -lic`. If you want to run a custom smoke pipeline instead, pass its path explicitly with `agentflow smoke path/to/pipeline.yaml`, or run it directly with `agentflow run path/to/pipeline.yaml` and keep the same `auto` preflight behavior for bundled and Kimi-bootstrapped local smoke pipelines. Use `--preflight always` for other custom pipelines that still need those checks, or `--preflight never` to skip preflight even for the bundled example. Add `--output json` to either form when you want the full persisted run record instead of the compact summary.
+The bundled smoke pipeline bootstraps the `kimi` shell helper inside the Claude node, so you do not need to wrap the entire `agentflow smoke` command in `bash -lic`. If you want to run a custom smoke pipeline instead, pass its path explicitly with `agentflow smoke path/to/pipeline.yaml`, or run it directly with `agentflow run path/to/pipeline.yaml` and keep the same `auto` preflight behavior for bundled and Kimi-bootstrapped local smoke pipelines. Use `--preflight always` for other custom pipelines that still need those checks, or `--preflight never` to skip preflight even for the bundled example. Add `--output json-summary` when you want a concise machine-readable result, or `--output json` when you want the full persisted run record instead of the compact summary.
 
 ## Reference sources
 
