@@ -411,6 +411,26 @@ def _check_kimi_shell_helper(home: Path | None = None) -> DoctorCheck:
     )
 
 
+def _reconcile_codex_executable_check(
+    codex_check: DoctorCheck,
+    kimi_check: DoctorCheck,
+) -> DoctorCheck:
+    if codex_check.status != "failed" or kimi_check.status != "ok":
+        return codex_check
+
+    if codex_check.detail != "`codex` is not on PATH and is unavailable in `bash -lic`.":
+        return codex_check
+
+    return DoctorCheck(
+        name="codex",
+        status="warning",
+        detail=(
+            "`codex` is not on PATH outside the smoke shell bootstrap; "
+            "`bash -lic` plus `kimi` must provide it for the bundled smoke pipeline."
+        ),
+    )
+
+
 def _reconcile_bash_login_startup_check(
     home: Path,
     startup_check: DoctorCheck,
@@ -442,11 +462,13 @@ def _reconcile_bash_login_startup_check(
 
 def build_local_smoke_doctor_report(home: Path | None = None) -> DoctorReport:
     resolved_home = home or Path.home()
+    codex_check = _check_codex_executable(resolved_home)
     bash_login_check = _check_bash_login_startup(resolved_home)
     kimi_check = _check_kimi_shell_helper(resolved_home)
+    codex_check = _reconcile_codex_executable_check(codex_check, kimi_check)
     bash_login_check = _reconcile_bash_login_startup_check(resolved_home, bash_login_check, kimi_check)
     checks = [
-        _check_codex_executable(resolved_home),
+        codex_check,
         _check_claude_host_executable(),
         bash_login_check,
         kimi_check,
