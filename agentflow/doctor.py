@@ -190,6 +190,20 @@ def _bash_startup_chain_to_bashrc(
     return None
 
 
+def _shadowed_bash_startup_chain_to_bashrc(home: Path, active_startup_name: str) -> tuple[str, ...] | None:
+    seen = frozenset({active_startup_name})
+    for filename in _BASH_LOGIN_FILENAMES:
+        if filename == active_startup_name:
+            continue
+        candidate = home / filename
+        if not candidate.exists():
+            continue
+        chain = _bash_startup_chain_to_bashrc(home, candidate, seen)
+        if chain is not None:
+            return chain
+    return None
+
+
 def _format_bash_startup_paths(paths: tuple[str, ...]) -> str:
     formatted = [f"`~/{path}`" for path in paths]
     if len(formatted) == 1:
@@ -213,6 +227,20 @@ def _check_bash_login_startup(home: Path) -> DoctorCheck:
 
     chain = _bash_startup_chain_to_bashrc(home, login_file)
     if chain is None:
+        shadowed_chain = _shadowed_bash_startup_chain_to_bashrc(home, login_file.name)
+        if shadowed_chain is not None:
+            shadowed_paths = _format_bash_startup_paths(shadowed_chain[:-1])
+            pronoun = "it" if len(shadowed_chain) == 2 else "they"
+            bridge_detail = "references" if len(shadowed_chain) == 2 else "reach"
+            return DoctorCheck(
+                name="bash_login_startup",
+                status="warning",
+                detail=(
+                    f"Bash login shells use `~/{login_file.name}`, so {shadowed_paths} will never run "
+                    f"even though {pronoun} {bridge_detail} `~/.bashrc`; "
+                    f"reference `~/.bashrc` or `~/{shadowed_chain[0]}` from `~/{login_file.name}`."
+                ),
+            )
         return DoctorCheck(
             name="bash_login_startup",
             status="warning",
