@@ -215,6 +215,23 @@ def _format_bash_startup_paths(paths: tuple[str, ...]) -> str:
     return f"{', '.join(formatted[:-1])}, and {formatted[-1]}"
 
 
+def _bash_login_file_clause(home: Path, login_file: Path) -> str:
+    if login_file.name != ".profile":
+        return f"Bash login shells use `~/{login_file.name}`"
+
+    missing_higher_precedence = [
+        filename
+        for filename in _BASH_LOGIN_FILENAMES[:-1]
+        if not (home / filename).exists()
+    ]
+    if len(missing_higher_precedence) == 2:
+        return (
+            "Bash login shells fall back to `~/.profile` because "
+            "neither `~/.bash_profile` nor `~/.bash_login` exists"
+        )
+    return "Bash login shells use `~/.profile`"
+
+
 def _check_bash_login_startup(home: Path) -> DoctorCheck:
     login_file = _bash_login_file(home)
     if login_file is None:
@@ -228,6 +245,7 @@ def _check_bash_login_startup(home: Path) -> DoctorCheck:
         )
 
     chain = _bash_startup_chain_to_bashrc(home, login_file)
+    login_file_clause = _bash_login_file_clause(home, login_file)
     if chain is None:
         shadowed_chain = _shadowed_bash_startup_chain_to_bashrc(home, login_file.name)
         if shadowed_chain is not None:
@@ -238,7 +256,7 @@ def _check_bash_login_startup(home: Path) -> DoctorCheck:
                 name="bash_login_startup",
                 status="warning",
                 detail=(
-                    f"Bash login shells use `~/{login_file.name}`, so {shadowed_paths} will never run "
+                    f"{login_file_clause}, so {shadowed_paths} will never run "
                     f"even though {pronoun} {bridge_detail} `~/.bashrc`; "
                     f"reference `~/.bashrc` or `~/{shadowed_chain[0]}` from `~/{login_file.name}`."
                 ),
@@ -246,16 +264,16 @@ def _check_bash_login_startup(home: Path) -> DoctorCheck:
         return DoctorCheck(
             name="bash_login_startup",
             status="warning",
-            detail=f"Bash login shells use `~/{login_file.name}`, but it does not reference `~/.bashrc`.",
+            detail=f"{login_file_clause}, but it does not reference `~/.bashrc`.",
         )
 
     bashrc_path = home / ".bashrc"
     if not bashrc_path.exists():
         if len(chain) == 2:
-            detail = f"Bash login shells use `~/{login_file.name}`, and it references `~/.bashrc`, but `~/.bashrc` does not exist."
+            detail = f"{login_file_clause}, and it references `~/.bashrc`, but `~/.bashrc` does not exist."
         else:
             detail = (
-                f"Bash login shells use `~/{login_file.name}`, and it reaches `~/.bashrc` "
+                f"{login_file_clause}, and it reaches `~/.bashrc` "
                 f"via {_format_bash_startup_paths(chain[1:-1])}, but `~/.bashrc` does not exist."
             )
         return DoctorCheck(name="bash_login_startup", status="warning", detail=detail)
@@ -264,14 +282,14 @@ def _check_bash_login_startup(home: Path) -> DoctorCheck:
         return DoctorCheck(
             name="bash_login_startup",
             status="ok",
-            detail=f"Bash login shells use `~/{login_file.name}`, and it references `~/.bashrc`.",
+            detail=f"{login_file_clause}, and it references `~/.bashrc`.",
         )
 
     return DoctorCheck(
         name="bash_login_startup",
         status="ok",
         detail=(
-            f"Bash login shells use `~/{login_file.name}`, and it reaches `~/.bashrc` "
+            f"{login_file_clause}, and it reaches `~/.bashrc` "
             f"via {_format_bash_startup_paths(chain[1:-1])}."
         ),
     )
@@ -377,7 +395,7 @@ def _reconcile_bash_login_startup_check(
         name="bash_login_startup",
         status="ok",
         detail=(
-            f"Bash login shells use `~/{login_file.name}`, and `bash -lic` already exposes `kimi`, `claude`, and "
+            f"{_bash_login_file_clause(home, login_file)}, and `bash -lic` already exposes `kimi`, `claude`, and "
             "`codex`; a `~/.bashrc` bridge is not required for the bundled smoke pipeline."
         ),
     )
