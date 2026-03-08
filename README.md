@@ -157,6 +157,8 @@ Top-level pipeline controls include:
 - `concurrency`: max parallel nodes within a run
 - `fail_fast`: skip downstream work after the first failed node
 
+Runtime numeric settings are validated up front: `concurrency` must be at least `1`, `timeout_seconds` must be greater than `0`, and both `retries` and `retry_backoff_seconds` must be non-negative.
+
 Built-in provider shorthands:
 
 - `codex`: `openai`
