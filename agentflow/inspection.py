@@ -195,6 +195,21 @@ def _format_auth_source_summary(
     return summary
 
 
+def _kimi_helper_bootstrap_source(target: object) -> tuple[str, str] | None:
+    if getattr(target, "kind", None) != "local":
+        return None
+
+    shell_init = getattr(target, "shell_init", None)
+    if shell_init_uses_kimi_helper(shell_init):
+        return ("`target.shell_init` (`kimi` helper)", "target.shell_init")
+
+    shell = getattr(target, "shell", None)
+    if shell_command_uses_kimi_helper(shell if isinstance(shell, str) else None):
+        return ("`target.shell` (`kimi` helper)", "target.shell")
+
+    return None
+
+
 def _auth_summary(node: NodeSpec, resolved_provider: object) -> str | None:
     api_key_env, provider_name = _resolved_auth_requirement(node)
     if not api_key_env:
@@ -215,11 +230,10 @@ def _auth_summary(node: NodeSpec, resolved_provider: object) -> str | None:
         ):
             explicit_bootstrap_source = ("`target.shell`", "target.shell")
 
-        if api_key_env == "ANTHROPIC_API_KEY" and provider_uses_kimi_anthropic_auth(resolved_provider):
-            if shell_init_uses_kimi_helper(shell_init):
-                helper_bootstrap_source = ("`target.shell_init` (`kimi` helper)", "target.shell_init")
-            elif shell_command_uses_kimi_helper(shell if isinstance(shell, str) else None):
-                helper_bootstrap_source = ("`target.shell` (`kimi` helper)", "target.shell")
+        if (
+            api_key_env == "ANTHROPIC_API_KEY" and provider_uses_kimi_anthropic_auth(resolved_provider)
+        ) or node.agent == AgentKind.CODEX:
+            helper_bootstrap_source = _kimi_helper_bootstrap_source(target)
 
     if explicit_bootstrap_source is not None:
         return _format_auth_source_summary(api_key_env, explicit_bootstrap_source, helper_bootstrap_source)
@@ -247,6 +261,8 @@ def _auth_summary(node: NodeSpec, resolved_provider: object) -> str | None:
         )
 
     if helper_bootstrap_source is not None:
+        if node.agent == AgentKind.CODEX:
+            return f"Codex CLI login via {helper_bootstrap_source[0]} or `OPENAI_API_KEY` via current environment"
         return _format_auth_source_summary(api_key_env, helper_bootstrap_source)
 
     if node.agent == AgentKind.CODEX:
