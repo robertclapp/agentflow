@@ -136,6 +136,7 @@ nodes:
     assert "Pipeline: inspect-demo" in result.stdout
     assert "Note: Dependency references use placeholder node outputs" in result.stdout
     assert "- plan [codex/local]" in result.stdout
+    assert "Model: gpt-5" in result.stdout
     assert "Launch: bash -l -i -c 'kimi && eval \"$AGENTFLOW_TARGET_COMMAND\"'" in result.stdout
     assert "Runtime files: codex_home/config.toml" in result.stdout
     assert "Prompt: Review this: <inspect placeholder for nodes.plan.output>" in result.stdout
@@ -168,9 +169,39 @@ nodes:
     payload = json.loads(result.stdout)
     assert payload["pipeline"]["name"] == "inspect-json"
     assert [node["id"] for node in payload["nodes"]] == ["review"]
+    assert payload["nodes"][0]["resolved_provider"] == {
+        "name": "kimi",
+        "base_url": "https://api.kimi.com/coding/",
+        "api_key_env": "ANTHROPIC_API_KEY",
+        "wire_api": None,
+        "headers": {},
+        "env": {},
+    }
     assert payload["nodes"][0]["prepared"]["env"]["ANTHROPIC_API_KEY"] == "<redacted>"
     assert payload["nodes"][0]["launch"]["env"]["ANTHROPIC_API_KEY"] == "<redacted>"
     assert payload["nodes"][0]["launch"]["env"]["ANTHROPIC_BASE_URL"] == "https://api.kimi.com/coding/"
+
+
+def test_inspect_command_summary_shows_resolved_provider(tmp_path):
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        """name: inspect-provider
+working_dir: .
+nodes:
+  - id: review
+    agent: claude
+    provider: kimi
+    model: claude-sonnet-4-5
+    prompt: hi
+""",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["inspect", str(pipeline_path)])
+
+    assert result.exit_code == 0
+    assert "Model: claude-sonnet-4-5" in result.stdout
+    assert "Provider: kimi, key=ANTHROPIC_API_KEY, url=https://api.kimi.com/coding/" in result.stdout
 
 
 def test_inspect_command_rejects_unknown_nodes(tmp_path):

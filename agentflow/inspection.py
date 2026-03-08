@@ -8,7 +8,7 @@ from agentflow.agents.registry import AdapterRegistry, default_adapter_registry
 from agentflow.context import render_node_prompt
 from agentflow.prepared import build_execution_paths
 from agentflow.runners.registry import RunnerRegistry, default_runner_registry
-from agentflow.specs import NodeResult, NodeSpec, NodeStatus, PipelineSpec
+from agentflow.specs import NodeResult, NodeSpec, NodeStatus, PipelineSpec, resolve_provider
 
 _REDACTED = "<redacted>"
 _GENERATED = "<generated>"
@@ -109,6 +109,29 @@ def _payload_summary(node_plan: dict[str, Any]) -> str | None:
     return None
 
 
+def _provider_summary(node_plan: dict[str, Any]) -> str | None:
+    provider = node_plan.get("resolved_provider")
+    if not isinstance(provider, dict):
+        return None
+
+    parts: list[str] = []
+    name = provider.get("name")
+    if name:
+        parts.append(str(name))
+
+    api_key_env = provider.get("api_key_env")
+    if api_key_env:
+        parts.append(f"key={api_key_env}")
+
+    base_url = provider.get("base_url")
+    if base_url:
+        parts.append(f"url={base_url}")
+
+    if not parts:
+        return None
+    return ", ".join(parts)
+
+
 def build_launch_inspection(
     pipeline: PipelineSpec,
     *,
@@ -132,6 +155,7 @@ def build_launch_inspection(
             continue
 
         prompt, render_error = _render_prompt_for_inspection(pipeline, node, placeholder_results)
+        resolved_provider = resolve_provider(node.provider, node.agent)
         paths = build_execution_paths(
             base_dir=base_dir,
             pipeline_workdir=pipeline.working_path,
@@ -146,8 +170,10 @@ def build_launch_inspection(
         node_plan = {
             "id": node.id,
             "agent": node.agent.value,
+            "model": node.model,
             "depends_on": list(node.depends_on),
             "provider": node.provider.model_dump(mode="json") if hasattr(node.provider, "model_dump") else node.provider,
+            "resolved_provider": resolved_provider.model_dump(mode="json") if resolved_provider is not None else None,
             "target": node.target.model_dump(mode="json"),
             "rendered_prompt": prompt,
             "rendered_prompt_preview": _preview_text(prompt, limit=120),
@@ -206,6 +232,11 @@ def render_launch_inspection_summary(report: dict[str, Any]) -> str:
             lines.append(f"  Depends on: {', '.join(node['depends_on'])}")
         if node["render_error"]:
             lines.append(f"  Render error: {node['render_error']}")
+        if node.get("model"):
+            lines.append(f"  Model: {node['model']}")
+        provider_summary = _provider_summary(node)
+        if provider_summary:
+            lines.append(f"  Provider: {provider_summary}")
         prompt_preview = node.get("rendered_prompt_preview")
         if prompt_preview:
             lines.append(f"  Prompt: {prompt_preview}")
