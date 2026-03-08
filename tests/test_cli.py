@@ -294,6 +294,7 @@ nodes:
             "tools": "read_only",
             "capture": "final",
             "provider": "kimi, key=ANTHROPIC_API_KEY, url=https://api.kimi.com/coding/",
+            "auth": "`ANTHROPIC_API_KEY` via `target.shell_init` (`kimi` helper)",
             "bootstrap": "shell=bash, login=true, interactive=true, init=kimi",
             "prompt_preview": "Reply with exactly: claude ok",
             "prepared_command": "claude -p 'Reply with exactly: claude ok' --output-format stream-json --verbose --permission-mode bypassPermissions --tools Read,Glob,Grep,LS,NotebookRead,Task,TaskOutput,TodoRead,WebFetch,WebSearch",
@@ -353,9 +354,31 @@ nodes:
     assert summary_payload["nodes"][0]["bootstrap"] == (
         "shell=bash, login=true, interactive=true, init=export ANTHROPIC_API_KEY=<redacted> && kimi"
     )
+    assert summary_payload["nodes"][0]["auth"] == "`ANTHROPIC_API_KEY` via `target.shell_init`"
     assert summary_payload["nodes"][0]["launch"] == (
         "bash -l -i -c 'export ANTHROPIC_API_KEY=<redacted> && kimi && eval \"$AGENTFLOW_TARGET_COMMAND\"'"
     )
+
+
+def test_inspect_command_summary_shows_codex_login_fallback(tmp_path, monkeypatch):
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        """name: inspect-codex-auth
+working_dir: .
+nodes:
+  - id: plan
+    agent: codex
+    prompt: hi
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    result = runner.invoke(app, ["inspect", str(pipeline_path), "--output", "json-summary"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["nodes"][0]["auth"] == "Codex CLI login or `OPENAI_API_KEY` via current environment"
 
 
 def test_inspect_command_reports_disabled_auto_preflight_for_plain_pipeline(tmp_path):
@@ -1391,6 +1414,54 @@ def test_run_auto_runs_preflight_for_custom_pipeline_with_kimi_shell_init(monkey
     assert captured["submitted_pipeline"] is fake_pipeline
     assert captured["wait_run_id"] == "run-custom-kimi"
     assert captured["wait_timeout"] is None
+
+
+def test_run_auto_preflight_stops_when_local_codex_auth_is_unavailable(monkeypatch):
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(agentflow.cli, "build_local_smoke_doctor_report", lambda: _doctor_report())
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args=args[0], returncode=1, stdout="", stderr=""),
+    )
+    monkeypatch.setattr(
+        agentflow.cli,
+        "_build_runtime",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not build when preflight fails")),
+    )
+    fake_pipeline = SimpleNamespace(
+        nodes=[
+            SimpleNamespace(
+                id="codex_plan",
+                agent=SimpleNamespace(value="codex"),
+                provider=None,
+                env={},
+                executable=None,
+                target=SimpleNamespace(
+                    kind="local",
+                    shell="bash",
+                    shell_login=True,
+                    shell_interactive=True,
+                    shell_init="kimi",
+                    cwd=None,
+                ),
+            )
+        ],
+        working_path=Path.cwd(),
+    )
+    monkeypatch.setattr(agentflow.cli, "_load_pipeline", _capture_pipeline_loader(captured, fake_pipeline))
+
+    result = runner.invoke(app, ["run", "custom-run.yaml", "--output", "summary"])
+
+    assert result.exit_code == 1
+    assert captured["loaded_path"] == "custom-run.yaml"
+    assert result.stdout == (
+        "Doctor: failed\n"
+        "- kimi_shell_helper: ok - ready\n"
+        "- codex_auth: failed - Node `codex_plan` (codex) cannot authenticate local Codex after the node shell bootstrap; `codex login status` fails and `OPENAI_API_KEY` is not set in the current environment, `node.env`, or `provider.env`.\n"
+    )
 
 
 def test_run_auto_runs_preflight_for_custom_pipeline_with_kimi_agent(monkeypatch):
@@ -2481,6 +2552,51 @@ def test_doctor_with_pipeline_path_accepts_claude_kimi_provider_credentials_from
         "- kimi_shell_helper: ok - ready\n"
         "Pipeline auto preflight: enabled - local Codex/Claude/Kimi nodes use a `kimi` shell bootstrap.\n"
         "Pipeline auto preflight matches: claude_review (claude) via `target.shell_init`\n"
+    )
+
+
+def test_doctor_with_pipeline_path_fails_when_local_codex_auth_is_unavailable(monkeypatch):
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(agentflow.cli, "build_local_smoke_doctor_report", lambda: _doctor_report())
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args=args[0], returncode=1, stdout="", stderr=""),
+    )
+    fake_pipeline = SimpleNamespace(
+        nodes=[
+            SimpleNamespace(
+                id="codex_plan",
+                agent=SimpleNamespace(value="codex"),
+                provider=None,
+                env={},
+                executable=None,
+                target=SimpleNamespace(
+                    kind="local",
+                    shell="bash",
+                    shell_login=True,
+                    shell_interactive=True,
+                    shell_init="kimi",
+                    cwd=None,
+                ),
+            )
+        ],
+        working_path=Path.cwd(),
+    )
+    monkeypatch.setattr(agentflow.cli, "_load_pipeline", _capture_pipeline_loader(captured, fake_pipeline))
+
+    result = runner.invoke(app, ["doctor", "custom-smoke.yaml", "--output", "summary"])
+
+    assert result.exit_code == 1
+    assert captured["loaded_path"] == "custom-smoke.yaml"
+    assert result.stdout == (
+        "Doctor: failed\n"
+        "- kimi_shell_helper: ok - ready\n"
+        "- codex_auth: failed - Node `codex_plan` (codex) cannot authenticate local Codex after the node shell bootstrap; `codex login status` fails and `OPENAI_API_KEY` is not set in the current environment, `node.env`, or `provider.env`.\n"
+        "Pipeline auto preflight: enabled - local Codex/Claude/Kimi nodes use a `kimi` shell bootstrap.\n"
+        "Pipeline auto preflight matches: codex_plan (codex) via `target.shell_init`\n"
     )
 
 
