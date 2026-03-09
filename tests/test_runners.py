@@ -405,6 +405,36 @@ async def test_local_runner_cancellation_escalates_when_process_ignores_sigterm(
     assert result.stderr_lines == ["Cancelled by user"]
 
 
+@pytest.mark.asyncio
+async def test_local_runner_timeout_uses_standard_exit_code(tmp_path: Path):
+    node = NodeSpec.model_validate(
+        {
+            "id": "timeout-standard-exit",
+            "agent": "codex",
+            "prompt": "hi",
+            "timeout_seconds": 1,
+        }
+    )
+    prepared = PreparedExecution(
+        command=[
+            "python3",
+            "-c",
+            'import time; print("ready", flush=True); time.sleep(60)',
+        ],
+        env={},
+        cwd=str(tmp_path),
+        trace_kind="codex",
+    )
+
+    result = await LocalRunner().execute(node, prepared, _paths(tmp_path), _noop_output, lambda: False)
+
+    assert result.cancelled is False
+    assert result.timed_out is True
+    assert result.exit_code == 124
+    assert result.stdout_lines == ["ready"]
+    assert result.stderr_lines == ["Timed out after 1s"]
+
+
 def test_local_runner_plan_execution_includes_shell_wrapper(tmp_path: Path):
     node = NodeSpec.model_validate(
         {
