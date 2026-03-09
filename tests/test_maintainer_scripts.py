@@ -119,7 +119,7 @@ def test_make_python_target_prints_repo_python_path() -> None:
     assert completed.stderr == ""
 
 
-def test_make_help_verify_local_mentions_bundled_smoke_local() -> None:
+def test_make_help_verify_local_mentions_bundled_run_local() -> None:
     repo_root = Path(__file__).resolve().parents[1]
 
     completed = subprocess.run(
@@ -134,7 +134,10 @@ def test_make_help_verify_local_mentions_bundled_smoke_local() -> None:
     assert completed.returncode == 0
     assert (
         "verify-local  Run the full local Codex + Claude-on-Kimi verification stack across bundled "
-        "toolchain-local/inspect-local/doctor-local/smoke-local/check-local"
+        "toolchain-local/inspect-local/doctor-local/smoke-local/run-local/check-local"
+    ) in completed.stdout
+    assert (
+        "run-local     Run the bundled local Codex + Claude-on-Kimi pipeline through `agentflow run`"
     ) in completed.stdout
     assert completed.stderr == ""
 
@@ -266,6 +269,62 @@ def test_verify_custom_local_kimi_run_script_times_out_when_agentflow_hangs(tmp_
     assert elapsed < 3
 
 
+def test_verify_bundled_local_kimi_run_script_times_out_when_agentflow_hangs(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+
+    run_path = _copy_script(
+        repo_root / "scripts" / "verify-bundled-local-kimi-run.sh",
+        scripts_dir / "verify-bundled-local-kimi-run.sh",
+    )
+    _copy_script(
+        repo_root / "scripts" / "custom-local-kimi-helpers.sh",
+        scripts_dir / "custom-local-kimi-helpers.sh",
+    )
+    fake_pythonpath = _write_fake_agentflow_module(
+        tmp_path / "fake-pythonpath",
+        """
+        from __future__ import annotations
+
+        import sys
+        import time
+
+        if len(sys.argv) > 1 and sys.argv[1] == "run":
+            print("run-stdout", flush=True)
+            print("run-stderr", file=sys.stderr, flush=True)
+            time.sleep(5)
+        """,
+    )
+
+    started_at = time.monotonic()
+    completed = subprocess.run(
+        ["bash", str(run_path)],
+        capture_output=True,
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "AGENTFLOW_PYTHON": sys.executable,
+            "PYTHONPATH": str(fake_pythonpath),
+            "AGENTFLOW_LOCAL_VERIFY_TIMEOUT_SECONDS": "0.2",
+        },
+        text=True,
+        timeout=5,
+    )
+    elapsed = time.monotonic() - started_at
+
+    bundled_smoke_pipeline = tmp_path / "examples" / "local-real-agents-kimi-smoke.yaml"
+
+    assert completed.returncode == 124
+    assert f"bundled run pipeline path: {bundled_smoke_pipeline}" in completed.stdout
+    assert "Timed out after 0.2s:" in completed.stderr
+    assert "agentflow run stderr:" in completed.stderr
+    assert "run-stderr" in completed.stderr
+    assert "agentflow run stdout:" in completed.stderr
+    assert "run-stdout" in completed.stderr
+    assert elapsed < 3
+
+
 def test_verify_local_kimi_stack_script_runs_steps_in_expected_order(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     scripts_dir = tmp_path / "scripts"
@@ -295,6 +354,7 @@ def test_verify_local_kimi_stack_script_runs_steps_in_expected_order(tmp_path: P
 
     for script_name in (
         "verify-local-kimi-shell.sh",
+        "verify-bundled-local-kimi-run.sh",
         "verify-custom-local-kimi-doctor.sh",
         "verify-custom-local-kimi-inspect.sh",
         "verify-custom-local-kimi-pipeline.sh",
@@ -330,6 +390,7 @@ def test_verify_local_kimi_stack_script_runs_steps_in_expected_order(tmp_path: P
         f"agentflow:inspect {bundled_smoke_pipeline} --output summary",
         f"agentflow:doctor {bundled_smoke_pipeline} --output summary",
         f"agentflow:smoke {bundled_smoke_pipeline} --output summary",
+        "verify-bundled-local-kimi-run.sh mode=",
         "verify-custom-local-kimi-doctor.sh mode=",
         "verify-custom-local-kimi-doctor.sh mode=shell-init",
         "verify-custom-local-kimi-doctor.sh mode=shell-wrapper",
@@ -344,11 +405,12 @@ def test_verify_local_kimi_stack_script_runs_steps_in_expected_order(tmp_path: P
         "verify-custom-local-kimi-run.sh mode=shell-init",
         "verify-custom-local-kimi-run.sh mode=shell-wrapper",
     ]
-    assert completed.stdout.count("== ") == 18
+    assert completed.stdout.count("== ") == 19
     assert "== Shell toolchain ==" in completed.stdout
     assert "== Bundled toolchain-local ==" in completed.stdout
     assert "== Bundled inspect-local ==" in completed.stdout
     assert "== Bundled doctor-local ==" in completed.stdout
     assert "== Bundled smoke-local ==" in completed.stdout
+    assert "== Bundled run-local ==" in completed.stdout
     assert "== Bundled check-local ==" in completed.stdout
     assert "== External custom run (target.shell) ==" in completed.stdout

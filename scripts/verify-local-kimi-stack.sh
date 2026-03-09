@@ -20,6 +20,7 @@ run_step "Bundled toolchain-local" agentflow_run_with_timeout "$python_bin" "$py
 run_step "Bundled inspect-local" agentflow_run_with_timeout "$python_bin" "$python_bin" -m agentflow inspect "$bundled_smoke_pipeline" --output summary
 run_step "Bundled doctor-local" agentflow_run_with_timeout "$python_bin" "$python_bin" -m agentflow doctor "$bundled_smoke_pipeline" --output summary
 run_step "Bundled smoke-local" agentflow_run_with_timeout "$python_bin" "$python_bin" -m agentflow smoke "$bundled_smoke_pipeline" --output summary
+run_step "Bundled run-local" bash "$script_dir/verify-bundled-local-kimi-run.sh"
 run_step "External custom doctor" bash "$script_dir/verify-custom-local-kimi-doctor.sh"
 run_step "External custom doctor (shell_init)" env AGENTFLOW_KIMI_PIPELINE_MODE=shell-init bash "$script_dir/verify-custom-local-kimi-doctor.sh"
 run_step "External custom doctor (target.shell)" env AGENTFLOW_KIMI_PIPELINE_MODE=shell-wrapper bash "$script_dir/verify-custom-local-kimi-doctor.sh"
