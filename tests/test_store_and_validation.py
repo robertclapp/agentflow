@@ -296,6 +296,52 @@ def test_pipeline_validation_allows_per_node_opt_out_from_inherited_kimi_bootstr
     assert plain_target.cwd == "shared-work"
 
 
+def test_pipeline_validation_opt_out_drops_customized_kimi_shell_defaults():
+    pipeline = PipelineSpec.model_validate(
+        {
+            "name": "local-bootstrap-custom-opt-out",
+            "working_dir": ".",
+            "local_target_defaults": LocalTarget.model_validate(
+                {
+                    "bootstrap": "kimi",
+                    "cwd": "shared-work",
+                    "shell_init": ["export EXTRA_FLAG=1"],
+                }
+            ),
+            "nodes": [
+                {"id": "shared", "agent": "claude", "prompt": "shared"},
+                {
+                    "id": "plain",
+                    "agent": "codex",
+                    "prompt": "plain",
+                    "target": {"bootstrap": None},
+                },
+            ],
+        }
+    )
+
+    shared_target = pipeline.nodes[0].target
+    plain_target = pipeline.nodes[1].target
+
+    assert shared_target.bootstrap == "kimi"
+    assert shared_target.shell == "bash"
+    assert shared_target.shell_login is True
+    assert shared_target.shell_interactive is True
+    assert shared_target.shell_init == [
+        "export EXTRA_FLAG=1",
+        "command -v kimi >/dev/null 2>&1",
+        "kimi",
+    ]
+    assert shared_target.cwd == "shared-work"
+
+    assert plain_target.bootstrap is None
+    assert plain_target.shell is None
+    assert plain_target.shell_login is False
+    assert plain_target.shell_interactive is False
+    assert plain_target.shell_init is None
+    assert plain_target.cwd == "shared-work"
+
+
 @pytest.mark.parametrize(
     ("target_patch", "expected_message"),
     [

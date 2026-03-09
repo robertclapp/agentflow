@@ -71,6 +71,7 @@ class ProviderConfig(BaseModel):
 
 _KIMI_ANTHROPIC_BASE_URL = "https://api.kimi.com/coding/"
 _LOCAL_KIMI_BOOTSTRAP_SHELL_INIT = ("command -v kimi >/dev/null 2>&1", "kimi")
+_LOCAL_BOOTSTRAP_TARGET_KEYS = ("shell", "shell_login", "shell_interactive", "shell_init")
 
 
 def _normalize_local_bootstrap(value: object) -> str | None:
@@ -467,9 +468,8 @@ def _drop_inherited_bootstrap_defaults(local_target_defaults: dict[str, Any]) ->
         return inherited
 
     inherited.pop("bootstrap", None)
-    for key, value in _local_bootstrap_defaults(bootstrap).items():
-        if inherited.get(key) == value:
-            inherited.pop(key, None)
+    for key in _LOCAL_BOOTSTRAP_TARGET_KEYS:
+        inherited.pop(key, None)
     return inherited
 
 
