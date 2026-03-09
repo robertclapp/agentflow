@@ -147,8 +147,8 @@ def test_make_help_verify_local_mentions_bundled_run_local() -> None:
     assert completed.returncode == 0
     assert (
         "verify-local  Run the full local Codex + Claude-on-Kimi verification stack across bundled "
-        "bootstrap/shell_init/target.shell inspect/doctor/smoke/run coverage, bundled "
-        "toolchain-local/check-local"
+        "bootstrap/shell_init/target.shell inspect/doctor/smoke/run/check-local coverage, bundled "
+        "toolchain-local"
     ) in completed.stdout
     assert (
         "run-local     Run the bundled local Codex + Claude-on-Kimi pipeline through `agentflow run`"
@@ -201,6 +201,14 @@ def test_make_help_mentions_bundled_kimi_variant_shortcuts() -> None:
         "run-local-shell-wrapper Run the bundled local Codex + Claude-on-Kimi `target.shell` "
         "wrapper pipeline through `agentflow run`"
     ) in completed.stdout
+    assert (
+        "check-local-shell-init Run the bundled local Codex + Claude-on-Kimi `shell_init: kimi` "
+        "pipeline through `agentflow check-local`"
+    ) in completed.stdout
+    assert (
+        "check-local-shell-wrapper Run the bundled local Codex + Claude-on-Kimi `target.shell` "
+        "wrapper pipeline through `agentflow check-local`"
+    ) in completed.stdout
     assert completed.stderr == ""
 
 
@@ -215,10 +223,12 @@ def test_make_bundled_kimi_variant_shortcuts_point_to_shipped_examples() -> None
             "doctor-local-shell-init",
             "smoke-local-shell-init",
             "run-local-shell-init",
+            "check-local-shell-init",
             "inspect-local-shell-wrapper",
             "doctor-local-shell-wrapper",
             "smoke-local-shell-wrapper",
             "run-local-shell-wrapper",
+            "check-local-shell-wrapper",
         ],
         capture_output=True,
         cwd=repo_root,
@@ -247,6 +257,9 @@ def test_make_bundled_kimi_variant_shortcuts_point_to_shipped_examples() -> None
         f"{recipe_python} -m agentflow run examples/local-real-agents-kimi-shell-init-smoke.yaml --output summary"
     ) in completed.stdout
     assert (
+        f"{recipe_python} -m agentflow check-local examples/local-real-agents-kimi-shell-init-smoke.yaml --output summary"
+    ) in completed.stdout
+    assert (
         f"{recipe_python} -m agentflow inspect examples/local-real-agents-kimi-shell-wrapper-smoke.yaml --output summary"
     ) in completed.stdout
     assert (
@@ -257,6 +270,9 @@ def test_make_bundled_kimi_variant_shortcuts_point_to_shipped_examples() -> None
     ) in completed.stdout
     assert (
         f"{recipe_python} -m agentflow run examples/local-real-agents-kimi-shell-wrapper-smoke.yaml --output summary"
+    ) in completed.stdout
+    assert (
+        f"{recipe_python} -m agentflow check-local examples/local-real-agents-kimi-shell-wrapper-smoke.yaml --output summary"
     ) in completed.stdout
     assert completed.stderr == ""
 
@@ -709,21 +725,23 @@ def test_verify_local_kimi_stack_script_runs_steps_in_expected_order(tmp_path: P
         f"agentflow:doctor {bundled_smoke_pipeline} --output summary",
         f"agentflow:smoke {bundled_smoke_pipeline} --output summary",
         "verify-bundled-local-kimi-run.sh mode=",
+        f"agentflow:check-local {bundled_smoke_pipeline} --output summary",
         f"agentflow:inspect {tmp_path / 'examples' / 'local-real-agents-kimi-shell-init-smoke.yaml'} --output summary",
         f"agentflow:doctor {tmp_path / 'examples' / 'local-real-agents-kimi-shell-init-smoke.yaml'} --output summary",
         f"agentflow:smoke {tmp_path / 'examples' / 'local-real-agents-kimi-shell-init-smoke.yaml'} --output summary",
         "verify-bundled-local-kimi-run.sh mode=",
+        f"agentflow:check-local {tmp_path / 'examples' / 'local-real-agents-kimi-shell-init-smoke.yaml'} --output summary",
         f"agentflow:inspect {tmp_path / 'examples' / 'local-real-agents-kimi-shell-wrapper-smoke.yaml'} --output summary",
         f"agentflow:doctor {tmp_path / 'examples' / 'local-real-agents-kimi-shell-wrapper-smoke.yaml'} --output summary",
         f"agentflow:smoke {tmp_path / 'examples' / 'local-real-agents-kimi-shell-wrapper-smoke.yaml'} --output summary",
         "verify-bundled-local-kimi-run.sh mode=",
+        f"agentflow:check-local {tmp_path / 'examples' / 'local-real-agents-kimi-shell-wrapper-smoke.yaml'} --output summary",
         "verify-custom-local-kimi-doctor.sh mode=",
         "verify-custom-local-kimi-doctor.sh mode=shell-init",
         "verify-custom-local-kimi-doctor.sh mode=shell-wrapper",
         "verify-custom-local-kimi-inspect.sh mode=",
         "verify-custom-local-kimi-inspect.sh mode=shell-init",
         "verify-custom-local-kimi-inspect.sh mode=shell-wrapper",
-        "agentflow:check-local --output summary",
         "verify-custom-local-kimi-pipeline.sh mode=",
         "verify-custom-local-kimi-shell-init.sh mode=",
         "verify-custom-local-kimi-pipeline.sh mode=shell-wrapper",
@@ -731,18 +749,20 @@ def test_verify_local_kimi_stack_script_runs_steps_in_expected_order(tmp_path: P
         "verify-custom-local-kimi-run.sh mode=shell-init",
         "verify-custom-local-kimi-run.sh mode=shell-wrapper",
     ]
-    assert completed.stdout.count("== ") == 27
+    assert completed.stdout.count("== ") == 29
     assert "== Shell toolchain ==" in completed.stdout
     assert "== Bundled toolchain-local ==" in completed.stdout
     assert "== Bundled inspect-local ==" in completed.stdout
     assert "== Bundled doctor-local ==" in completed.stdout
     assert "== Bundled smoke-local ==" in completed.stdout
     assert "== Bundled run-local ==" in completed.stdout
+    assert "== Bundled check-local ==" in completed.stdout
     assert "== Bundled inspect-local (shell_init) ==" in completed.stdout
     assert "== Bundled smoke-local (shell_init) ==" in completed.stdout
     assert "== Bundled run-local (shell_init) ==" in completed.stdout
+    assert "== Bundled check-local (shell_init) ==" in completed.stdout
     assert "== Bundled inspect-local (target.shell) ==" in completed.stdout
     assert "== Bundled smoke-local (target.shell) ==" in completed.stdout
     assert "== Bundled run-local (target.shell) ==" in completed.stdout
-    assert "== Bundled check-local ==" in completed.stdout
+    assert "== Bundled check-local (target.shell) ==" in completed.stdout
     assert "== External custom run (target.shell) ==" in completed.stdout

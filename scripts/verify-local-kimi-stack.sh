@@ -42,6 +42,7 @@ run_bundled_run_step "" \
   "local-real-agents-kimi-smoke" \
   "target.bootstrap" \
   "path matches the bundled real-agent smoke pipeline."
+run_step "Bundled check-local" agentflow_run_with_timeout "$python_bin" "$python_bin" -m agentflow check-local "$bundled_smoke_pipeline" --output summary
 run_step "Bundled inspect-local (shell_init)" agentflow_run_with_timeout "$python_bin" "$python_bin" -m agentflow inspect "$bundled_shell_init_pipeline" --output summary
 run_step "Bundled doctor-local (shell_init)" agentflow_run_with_timeout "$python_bin" "$python_bin" -m agentflow doctor "$bundled_shell_init_pipeline" --output summary
 run_step "Bundled smoke-local (shell_init)" agentflow_run_with_timeout "$python_bin" "$python_bin" -m agentflow smoke "$bundled_shell_init_pipeline" --output summary
@@ -50,6 +51,7 @@ run_bundled_run_step " (shell_init)" \
   "local-real-agents-kimi-shell-init-smoke" \
   "target.shell_init" \
   'local Codex/Claude/Kimi nodes use a `kimi` shell bootstrap.'
+run_step "Bundled check-local (shell_init)" agentflow_run_with_timeout "$python_bin" "$python_bin" -m agentflow check-local "$bundled_shell_init_pipeline" --output summary
 run_step "Bundled inspect-local (target.shell)" agentflow_run_with_timeout "$python_bin" "$python_bin" -m agentflow inspect "$bundled_shell_wrapper_pipeline" --output summary
 run_step "Bundled doctor-local (target.shell)" agentflow_run_with_timeout "$python_bin" "$python_bin" -m agentflow doctor "$bundled_shell_wrapper_pipeline" --output summary
 run_step "Bundled smoke-local (target.shell)" agentflow_run_with_timeout "$python_bin" "$python_bin" -m agentflow smoke "$bundled_shell_wrapper_pipeline" --output summary
@@ -58,13 +60,13 @@ run_bundled_run_step " (target.shell)" \
   "local-real-agents-kimi-shell-wrapper-smoke" \
   "target.shell" \
   'local Codex/Claude/Kimi nodes use a `kimi` shell bootstrap.'
+run_step "Bundled check-local (target.shell)" agentflow_run_with_timeout "$python_bin" "$python_bin" -m agentflow check-local "$bundled_shell_wrapper_pipeline" --output summary
 run_step "External custom doctor" bash "$script_dir/verify-custom-local-kimi-doctor.sh"
 run_step "External custom doctor (shell_init)" env AGENTFLOW_KIMI_PIPELINE_MODE=shell-init bash "$script_dir/verify-custom-local-kimi-doctor.sh"
 run_step "External custom doctor (target.shell)" env AGENTFLOW_KIMI_PIPELINE_MODE=shell-wrapper bash "$script_dir/verify-custom-local-kimi-doctor.sh"
 run_step "External custom inspect" bash "$script_dir/verify-custom-local-kimi-inspect.sh"
 run_step "External custom inspect (shell_init)" env AGENTFLOW_KIMI_PIPELINE_MODE=shell-init bash "$script_dir/verify-custom-local-kimi-inspect.sh"
 run_step "External custom inspect (target.shell)" env AGENTFLOW_KIMI_PIPELINE_MODE=shell-wrapper bash "$script_dir/verify-custom-local-kimi-inspect.sh"
-run_step "Bundled check-local" agentflow_run_with_timeout "$python_bin" "$python_bin" -m agentflow check-local --output summary
 run_step "External custom check-local" bash "$script_dir/verify-custom-local-kimi-pipeline.sh"
 run_step "External custom check-local (shell_init)" bash "$script_dir/verify-custom-local-kimi-shell-init.sh"
 run_step "External custom check-local (target.shell)" env AGENTFLOW_KIMI_PIPELINE_MODE=shell-wrapper bash "$script_dir/verify-custom-local-kimi-pipeline.sh"

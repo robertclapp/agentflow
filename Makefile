@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help test inspect-local inspect-local-shell-init inspect-local-shell-wrapper doctor-local doctor-local-shell-init doctor-local-shell-wrapper smoke-local smoke-local-shell-init smoke-local-shell-wrapper run-local run-local-shell-init run-local-shell-wrapper check-local toolchain-local doctor-local-custom doctor-local-custom-shell-init doctor-local-custom-shell-wrapper inspect-local-custom inspect-local-custom-shell-init inspect-local-custom-shell-wrapper check-local-custom check-local-custom-shell-init check-local-custom-shell-wrapper run-local-custom run-local-custom-shell-init run-local-custom-shell-wrapper verify-local
+.PHONY: help test inspect-local inspect-local-shell-init inspect-local-shell-wrapper doctor-local doctor-local-shell-init doctor-local-shell-wrapper smoke-local smoke-local-shell-init smoke-local-shell-wrapper run-local run-local-shell-init run-local-shell-wrapper check-local check-local-shell-init check-local-shell-wrapper toolchain-local doctor-local-custom doctor-local-custom-shell-init doctor-local-custom-shell-wrapper inspect-local-custom inspect-local-custom-shell-init inspect-local-custom-shell-wrapper check-local-custom check-local-custom-shell-init check-local-custom-shell-wrapper run-local-custom run-local-custom-shell-init run-local-custom-shell-wrapper verify-local
 
 PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 
@@ -10,7 +10,7 @@ help:
 	  '  python        Print the Python interpreter used by repo shortcuts (.venv/bin/python when available, else python3)' \
 	  '  test          Run the Python test suite' \
 	  '  toolchain-local Run `agentflow toolchain-local --output summary` for the local bash/Kimi/Codex/Claude readiness check' \
-	  '  verify-local  Run the full local Codex + Claude-on-Kimi verification stack across bundled bootstrap/shell_init/target.shell inspect/doctor/smoke/run coverage, bundled toolchain-local/check-local, plus external custom doctor, inspect, check-local, and run paths (shared timeout via AGENTFLOW_LOCAL_VERIFY_TIMEOUT_SECONDS)' \
+	  '  verify-local  Run the full local Codex + Claude-on-Kimi verification stack across bundled bootstrap/shell_init/target.shell inspect/doctor/smoke/run/check-local coverage, bundled toolchain-local, plus external custom doctor, inspect, check-local, and run paths (shared timeout via AGENTFLOW_LOCAL_VERIFY_TIMEOUT_SECONDS)' \
 	  '  doctor-local-custom Verify a temporary external Codex + Claude-on-Kimi pipeline through `agentflow doctor`' \
 	  '  doctor-local-custom-shell-init Verify a temporary external Codex + Claude-on-Kimi `shell_init: kimi` pipeline through `agentflow doctor`' \
 	  '  doctor-local-custom-shell-wrapper Verify a temporary external Codex + Claude-on-Kimi `target.shell` wrapper pipeline through `agentflow doctor`' \
@@ -35,7 +35,9 @@ help:
 	  '  run-local     Run the bundled local Codex + Claude-on-Kimi pipeline through `agentflow run`' \
 	  '  run-local-shell-init Run the bundled local Codex + Claude-on-Kimi `shell_init: kimi` pipeline through `agentflow run`' \
 	  '  run-local-shell-wrapper Run the bundled local Codex + Claude-on-Kimi `target.shell` wrapper pipeline through `agentflow run`' \
-	  '  check-local   Run the single-pass doctor-then-smoke CLI shortcut with summary output'
+	  '  check-local   Run the single-pass doctor-then-smoke CLI shortcut with summary output' \
+	  '  check-local-shell-init Run the bundled local Codex + Claude-on-Kimi `shell_init: kimi` pipeline through `agentflow check-local`' \
+	  '  check-local-shell-wrapper Run the bundled local Codex + Claude-on-Kimi `target.shell` wrapper pipeline through `agentflow check-local`'
 
 python:
 	@$(PYTHON) -c "import sys; print(sys.executable)"
@@ -123,3 +125,9 @@ run-local-shell-wrapper:
 
 check-local:
 	$(PYTHON) -m agentflow check-local --output summary
+
+check-local-shell-init:
+	$(PYTHON) -m agentflow check-local examples/local-real-agents-kimi-shell-init-smoke.yaml --output summary
+
+check-local-shell-wrapper:
+	$(PYTHON) -m agentflow check-local examples/local-real-agents-kimi-shell-wrapper-smoke.yaml --output summary
