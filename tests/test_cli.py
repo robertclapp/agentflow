@@ -8278,6 +8278,52 @@ nodes:
     )
 
 
+def test_run_with_custom_kimi_provider_api_key_env_pipeline_auto_preflight_runs_pipeline_checks(tmp_path, monkeypatch):
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        """name: run-provider-kimi-custom-key-auto-preflight
+working_dir: .
+nodes:
+  - id: review
+    agent: claude
+    provider:
+      name: kimi-proxy
+      base_url: https://api.kimi.com/coding/
+      api_key_env: KIMI_PROXY_KEY
+    prompt: hi
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        agentflow.cli,
+        "build_local_smoke_doctor_report",
+        lambda: (_ for _ in ()).throw(AssertionError("bundled smoke doctor should not run")),
+    )
+    monkeypatch.setattr(
+        agentflow.cli,
+        "build_local_kimi_bootstrap_doctor_report",
+        lambda: (_ for _ in ()).throw(AssertionError("kimi bootstrap doctor should not run")),
+    )
+    monkeypatch.setattr(
+        agentflow.cli,
+        "build_pipeline_local_claude_readiness_checks",
+        lambda pipeline: [DoctorCheck(name="claude_ready", status="failed", detail="missing local claude")],
+    )
+    monkeypatch.setattr(agentflow.cli, "_run_pipeline", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("run should not start")))
+    monkeypatch.setenv("KIMI_PROXY_KEY", "super-secret")
+
+    result = runner.invoke(app, ["run", str(pipeline_path), "--output", "summary"])
+
+    assert result.exit_code == 1
+    assert result.stdout == (
+        "Doctor: failed\n"
+        "- claude_ready: failed - missing local claude\n"
+        "Pipeline auto preflight: enabled - local Kimi-backed nodes require pipeline-specific readiness checks.\n"
+        "Pipeline auto preflight matches: review (claude) via `provider`\n"
+    )
+
+
 def test_doctor_with_pipeline_path_warns_when_local_launch_inherits_current_base_url(tmp_path, monkeypatch):
     pipeline_path = tmp_path / "pipeline.yaml"
     pipeline_path.write_text(

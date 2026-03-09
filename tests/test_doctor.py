@@ -24,7 +24,7 @@ from agentflow.doctor import (
     build_pipeline_local_kimi_readiness_info_checks,
 )
 from agentflow.prepared import ExecutionPaths
-from agentflow.specs import ProviderConfig
+from agentflow.specs import ProviderConfig, provider_uses_kimi_anthropic_auth
 
 
 _KIMI_HELPER_OK_DETAIL = (
@@ -114,6 +114,16 @@ def test_should_probe_local_claude_for_custom_kimi_provider_env_base_url():
     )
 
     assert _should_probe_local_claude(node) is True
+
+
+def test_provider_uses_kimi_anthropic_auth_for_custom_api_key_env():
+    provider = ProviderConfig(
+        name="kimi-proxy",
+        base_url="https://api.kimi.com/coding/",
+        api_key_env="KIMI_PROXY_KEY",
+    )
+
+    assert provider_uses_kimi_anthropic_auth(provider) is True
 
 
 def test_should_probe_local_claude_for_generic_local_target():

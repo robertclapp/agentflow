@@ -151,19 +151,13 @@ def provider_uses_kimi_anthropic_auth(provider: ProviderConfig | None) -> bool:
     if provider is None:
         return False
 
-    configured_api_key_env = (provider.api_key_env or "").strip()
-    if not configured_api_key_env and _normalized_provider_env_text(provider, "ANTHROPIC_API_KEY") is not None:
-        configured_api_key_env = "ANTHROPIC_API_KEY"
-    if configured_api_key_env != "ANTHROPIC_API_KEY":
-        return False
-
     effective_base_url = _normalized_provider_env_base_url(provider, "ANTHROPIC_BASE_URL")
     if effective_base_url is None:
         effective_base_url = _normalized_provider_base_url(provider.base_url)
     if effective_base_url is not None:
         return effective_base_url == _KIMI_ANTHROPIC_BASE_URL.rstrip("/")
 
-    return (provider.name or "").strip().lower() == "kimi"
+    return (provider.name or "").strip().lower() in {"kimi", "moonshot", "moonshot-ai"}
 
 
 def resolve_provider(value: str | ProviderConfig | None, agent: AgentKind) -> ProviderConfig | None:
