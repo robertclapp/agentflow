@@ -9214,6 +9214,12 @@ nodes:
 
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
+    assert payload["pipeline"]["auto_preflight"] == {
+        "enabled": True,
+        "reason": "local Codex/Claude/Kimi nodes depend on shell startup for auth.",
+        "matches": [{"node_id": "review", "agent": "claude", "trigger": "target.bash_startup"}],
+        "match_summary": ["review (claude) via `target.bash_startup`"],
+    }
     assert payload["checks"] == [
         {
             "name": "provider_credentials",
@@ -9225,6 +9231,63 @@ nodes:
         }
     ]
     assert payload["shell_bridge"] == build_bash_login_shell_bridge_recommendation(home=custom_home).as_dict()
+
+
+def test_run_auto_preflight_stops_when_auth_depends_on_login_startup(tmp_path, monkeypatch):
+    _disable_local_readiness_probes(monkeypatch)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+    monkeypatch.setattr(
+        agentflow.cli,
+        "_run_pipeline",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("run should not start")),
+    )
+
+    custom_home = tmp_path / "custom-home"
+    custom_home.mkdir()
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        f"""name: run-shell-startup-auth-preflight
+working_dir: .
+nodes:
+  - id: review
+    agent: claude
+    provider: anthropic
+    prompt: hi
+    target:
+      kind: local
+      shell: "env HOME={custom_home} bash"
+      shell_login: true
+      shell_interactive: true
+""",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["run", str(pipeline_path), "--output", "json"])
+
+    assert result.exit_code == 1
+    assert json.loads(result.stdout) == {
+        "status": "failed",
+        "checks": [
+            {
+                "name": "provider_credentials",
+                "status": "failed",
+                "detail": (
+                    "Node `review` (claude) requires `ANTHROPIC_API_KEY` for provider `anthropic`, but it is not set "
+                    "in the current environment, `node.env`, or `provider.env`."
+                ),
+            }
+        ],
+        "pipeline": {
+            "auto_preflight": {
+                "enabled": True,
+                "reason": "local Codex/Claude/Kimi nodes depend on shell startup for auth.",
+                "matches": [{"node_id": "review", "agent": "claude", "trigger": "target.bash_startup"}],
+                "match_summary": ["review (claude) via `target.bash_startup`"],
+            }
+        },
+        "shell_bridge": build_bash_login_shell_bridge_recommendation(home=custom_home).as_dict(),
+    }
 
 
 def test_doctor_with_pipeline_path_uses_pipeline_shell_bridge_for_custom_home(tmp_path, monkeypatch):
