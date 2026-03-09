@@ -6489,6 +6489,61 @@ nodes:
     )
 
 
+def test_doctor_with_pipeline_path_accepts_provider_credentials_from_shell_wrapper_login_bridge(monkeypatch):
+    captured: dict[str, object] = {}
+    observed_commands: list[list[str]] = []
+    observed_envs: list[dict[str, str]] = []
+
+    def _run(*args, **kwargs):
+        command = list(args[0])
+        env = dict(kwargs.get("env") or {})
+        observed_commands.append(command)
+        observed_envs.append(env)
+        if command == ["/opt/custom/bash", "-lc", 'test -n "${ANTHROPIC_API_KEY:-}"']:
+            return subprocess.CompletedProcess(
+                args=args[0],
+                returncode=0 if env.get("AGENTFLOW_KIMI_ENV_FILE") == "/tmp/from-shell-wrapper" else 1,
+                stdout="",
+                stderr="",
+            )
+        return subprocess.CompletedProcess(args=args[0], returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(agentflow.cli, "build_local_smoke_doctor_report", lambda: _doctor_report())
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(subprocess, "run", _run)
+    fake_pipeline = SimpleNamespace(
+        nodes=[
+            SimpleNamespace(
+                id="claude_review",
+                agent=SimpleNamespace(value="claude"),
+                provider="anthropic",
+                env={},
+                executable=None,
+                target=SimpleNamespace(
+                    kind="local",
+                    shell="env AGENTFLOW_KIMI_ENV_FILE=/tmp/from-shell-wrapper /opt/custom/bash",
+                    shell_login=True,
+                    cwd=None,
+                ),
+            )
+        ],
+        working_path=Path.cwd(),
+    )
+    monkeypatch.setattr(agentflow.cli, "_load_pipeline", _capture_pipeline_loader(captured, fake_pipeline))
+
+    result = runner.invoke(app, ["doctor", "custom-smoke.yaml", "--output", "summary"])
+
+    assert result.exit_code == 0
+    assert captured["loaded_path"] == "custom-smoke.yaml"
+    assert ["/opt/custom/bash", "-lc", 'test -n "${ANTHROPIC_API_KEY:-}"'] in observed_commands
+    assert any(env.get("AGENTFLOW_KIMI_ENV_FILE") == "/tmp/from-shell-wrapper" for env in observed_envs)
+    assert "provider_credentials" not in result.stdout
+    assert result.stdout == (
+        "Doctor: ok\n"
+        "Pipeline auto preflight: disabled - path does not match the bundled smoke pipeline and no local Codex/Claude/Kimi node uses `kimi` bootstrap.\n"
+    )
+
+
 def test_doctor_with_pipeline_path_accepts_provider_credentials_from_interactive_login_shell_startup(monkeypatch):
     captured: dict[str, object] = {}
     observed_commands: list[list[str]] = []
