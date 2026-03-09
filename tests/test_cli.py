@@ -8012,6 +8012,91 @@ def test_doctor_shell_bridge_summary_reports_when_no_fix_is_needed(monkeypatch):
     assert result.stdout == "Doctor: ok\n- kimi_shell_helper: ok - ready\nShell bridge suggestion: not needed\n"
 
 
+def test_doctor_with_pipeline_path_does_not_auto_include_unneeded_shell_bridge(tmp_path, monkeypatch):
+    _disable_local_readiness_probes(monkeypatch)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+
+    custom_home = tmp_path / "custom-home"
+    custom_home.mkdir()
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        f"""name: doctor-noisy-shell-bridge
+working_dir: .
+nodes:
+  - id: plan
+    agent: codex
+    prompt: hi
+    env:
+      OPENAI_BASE_URL: ""
+    target:
+      kind: local
+      shell: "env HOME={custom_home} bash"
+      shell_login: true
+""",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["doctor", str(pipeline_path), "--output", "json-summary"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload == {
+        "status": "ok",
+        "counts": {"ok": 0, "warning": 0, "failed": 0},
+        "checks": [],
+        "pipeline": {
+            "auto_preflight": {
+                "enabled": False,
+                "reason": "path does not match the bundled smoke pipeline and no local Codex/Claude/Kimi node uses `kimi` bootstrap.",
+                "matches": [],
+                "match_summary": [],
+            }
+        },
+    }
+
+
+def test_doctor_with_pipeline_path_auto_includes_shell_bridge_when_auth_depends_on_login_startup(tmp_path, monkeypatch):
+    _disable_local_readiness_probes(monkeypatch)
+    monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    custom_home = tmp_path / "custom-home"
+    custom_home.mkdir()
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        f"""name: doctor-shell-bridge-needed-for-auth
+working_dir: .
+nodes:
+  - id: review
+    agent: claude
+    provider: anthropic
+    prompt: hi
+    target:
+      kind: local
+      shell: "env HOME={custom_home} bash"
+      shell_login: true
+      shell_interactive: true
+""",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["doctor", str(pipeline_path), "--output", "json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["checks"] == [
+        {
+            "name": "provider_credentials",
+            "status": "failed",
+            "detail": (
+                "Node `review` (claude) requires `ANTHROPIC_API_KEY` for provider `anthropic`, but it is not set "
+                "in the current environment, `node.env`, or `provider.env`."
+            ),
+        }
+    ]
+    assert payload["shell_bridge"] == build_bash_login_shell_bridge_recommendation(home=custom_home).as_dict()
+
+
 def test_doctor_with_pipeline_path_uses_pipeline_shell_bridge_for_custom_home(tmp_path, monkeypatch):
     host_home = tmp_path / "host-home"
     host_home.mkdir()

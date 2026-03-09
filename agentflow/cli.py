@@ -521,6 +521,26 @@ def _pipeline_shell_bridge_recommendation(pipeline: object | None) -> ShellBridg
     return None
 
 
+def _node_auth_depends_on_local_shell_bootstrap(node: dict[str, object]) -> bool:
+    auth = node.get("auth")
+    return isinstance(auth, str) and auth.startswith("expects `") and "local shell bootstrap" in auth
+
+
+def _pipeline_auto_shell_bridge_recommendation(pipeline: object | None) -> ShellBridgeRecommendation | None:
+    if pipeline is None:
+        return None
+
+    for node in _pipeline_launch_inspection_nodes(pipeline):
+        if not isinstance(node, dict):
+            continue
+        if not _node_auth_depends_on_local_shell_bootstrap(node):
+            continue
+        recommendation = _shell_bridge_recommendation_from_payload(node.get("shell_bridge"))
+        if recommendation is not None:
+            return recommendation
+    return None
+
+
 def _pipeline_launch_env_override_checks(nodes: list[dict[str, object]]) -> list[DoctorCheck]:
     checks: list[DoctorCheck] = []
     for node in nodes:
@@ -691,16 +711,17 @@ def _preflight_shell_bridge_recommendation(
     *,
     pipeline: object | None = None,
 ) -> ShellBridgeRecommendation | None:
-    pipeline_recommendation = _pipeline_shell_bridge_recommendation(pipeline)
-    if pipeline_recommendation is not None:
-        return pipeline_recommendation
-
     for check in getattr(report, "checks", []) or []:
         if getattr(check, "name", None) != "bash_login_startup":
             continue
         if _status_value(getattr(check, "status", "unknown")) not in {"warning", "failed"}:
             continue
-        return build_bash_login_shell_bridge_recommendation()
+        return _pipeline_shell_bridge_recommendation(pipeline) or build_bash_login_shell_bridge_recommendation()
+    pipeline_recommendation = _pipeline_auto_shell_bridge_recommendation(pipeline)
+    if pipeline_recommendation is not None:
+        return pipeline_recommendation
+    if pipeline is not None and _status_value(getattr(report, "status", "ok")) == "failed" and _pipeline_uses_auto_preflight(pipeline):
+        return _pipeline_shell_bridge_recommendation(pipeline)
     return None
 
 
