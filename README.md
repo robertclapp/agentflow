@@ -100,6 +100,17 @@ The bundled Codex smoke node also clears any ambient `OPENAI_BASE_URL`, so a hos
 By default, `agentflow smoke` now prints a compact per-node summary instead of the full run record JSON. Use `agentflow smoke --output json-summary` when you want a compact machine-readable payload for scripts, or `agentflow smoke --output json` when you want the complete persisted run record with stdout, stderr, and trace details.
 Add `--show-preflight` when you want `smoke` to print the successful local readiness summary before the run starts. AgentFlow writes that extra summary to stderr so JSON stdout stays safe for wrappers and scripts, and it now includes the auto-preflight reason plus matched node bootstrap sources when available.
 
+Manage persisted runs from the CLI without opening the web UI:
+
+```bash
+agentflow runs
+agentflow show <run-id>
+agentflow cancel <run-id>
+agentflow rerun <run-id>
+```
+
+`agentflow runs` prints a compact summary of the runs already stored under `--runs-dir`, while `show` renders the same per-node summary for a single persisted run and still supports `--output json` or `--output json-summary`. `cancel` marks an active run as cancelling or cancels it immediately when it is still queued, and `rerun` re-executes the stored pipeline spec and waits for the fresh Codex/Claude/Kimi run to finish so the command behaves like a terminal-friendly replay.
+
 The bundled smoke preflight now matches that output mode too, so warning and failure reports stay in summary form by default and switch to JSON when you pass `--output json`.
 When those preflight checks detect a bash login startup bridge problem, the same smoke or run command now includes the ready-to-paste shell bridge recommendation inline instead of making you rerun Doctor separately.
 When that preflight loads the bundled smoke pipeline, it now also applies the same per-node shell-bootstrap and local agent readiness checks that custom Kimi-backed pipelines already use, so edits to the bundled example are still validated before launch.

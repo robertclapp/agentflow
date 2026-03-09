@@ -2350,6 +2350,11 @@ def test_rerun_supports_json_summary_output(monkeypatch):
             captured["run_id"] = run_id
             return queued_run
 
+        async def wait(self, run_id: str, timeout: float | None = None):
+            captured["wait_run_id"] = run_id
+            captured["wait_timeout"] = timeout
+            return _completed_run("run-rerun-new", pipeline_name="rerun-pipeline")
+
     monkeypatch.setattr(
         agentflow.cli,
         "_build_runtime",
@@ -2363,10 +2368,16 @@ def test_rerun_supports_json_summary_output(monkeypatch):
 
     assert result.exit_code == 0
     assert captured["run_id"] == "run-old"
+    assert captured["wait_run_id"] == "run-rerun-new"
+    assert captured["wait_timeout"] is None
     assert json.loads(result.stdout) == {
         "id": "run-rerun-new",
-        "status": "queued",
+        "status": "completed",
         "pipeline": {"name": "rerun-pipeline"},
+        "started_at": "2026-03-08T04:11:03+00:00",
+        "finished_at": "2026-03-08T04:11:10+00:00",
+        "duration": "7.0s",
+        "duration_seconds": 7.0,
         "run_dir": ".agentflow/runs/run-rerun-new",
         "nodes": [],
     }

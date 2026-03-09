@@ -56,6 +56,9 @@ class RunStore:
     def artifact_path(self, run_id: str, node_id: str, name: str) -> Path:
         return self.node_artifact_dir(run_id, node_id) / name
 
+    def cancel_request_path(self, run_id: str) -> Path:
+        return self.run_dir(run_id) / "cancel.requested"
+
     async def persist_run(self, run_id: str) -> None:
         record = self._runs[run_id]
         run_dir = self.run_dir(run_id)
@@ -73,6 +76,19 @@ class RunStore:
             self._events_cache[run_id].append(event)
         for subscriber in list(self._subscribers[run_id]):
             subscriber.put_nowait(event)
+
+    async def request_cancel(self, run_id: str) -> None:
+        lock = self._locks[run_id]
+        with lock:
+            self.cancel_request_path(run_id).write_text("cancel\n", encoding="utf-8")
+
+    def cancel_requested(self, run_id: str) -> bool:
+        return self.cancel_request_path(run_id).exists()
+
+    async def clear_cancel_request(self, run_id: str) -> None:
+        lock = self._locks[run_id]
+        with lock:
+            self.cancel_request_path(run_id).unlink(missing_ok=True)
 
     async def append_artifact_text(self, run_id: str, node_id: str, name: str, content: str) -> None:
         path = self.artifact_path(run_id, node_id, name)

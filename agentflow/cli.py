@@ -1151,7 +1151,9 @@ def rerun(
         except KeyError as exc:
             typer.echo(f"Run `{run_id}` not found in `{runs_dir}`.", err=True)
             raise typer.Exit(code=1) from exc
-        _echo_run_result(record, output=output, run_dir=_run_dir_for_record(store, record.id))
+        completed = await orchestrator.wait(record.id, timeout=None)
+        _echo_run_result(completed, output=output, run_dir=_run_dir_for_record(store, record.id))
+        raise typer.Exit(code=0 if _status_value(completed.status) == "completed" else 1)
 
     asyncio.run(_rerun())
 

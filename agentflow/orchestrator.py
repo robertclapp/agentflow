@@ -74,6 +74,7 @@ class Orchestrator:
         record = self.store.get_run(run_id)
         flag = self._cancel_flags.setdefault(run_id, threading.Event())
         flag.set()
+        await self.store.request_cancel(run_id)
         if record.status == RunStatus.QUEUED:
             await self._finalize_cancelled_queue_run(run_id)
             return self.store.get_run(run_id)
@@ -88,7 +89,9 @@ class Orchestrator:
         return await self.submit(record.pipeline)
 
     def _should_cancel(self, run_id: str) -> bool:
-        return self._cancel_flags.get(run_id, threading.Event()).is_set()
+        if self._cancel_flags.get(run_id, threading.Event()).is_set():
+            return True
+        return self.store.cancel_requested(run_id)
 
     async def _finalize_cancelled_queue_run(self, run_id: str) -> None:
         record = self.store.get_run(run_id)
@@ -99,6 +102,7 @@ class Orchestrator:
                 node.status = NodeStatus.CANCELLED
                 node.finished_at = record.finished_at
         await self._publish(run_id, "run_completed", status=record.status.value)
+        await self.store.clear_cancel_request(run_id)
         await self.store.persist_run(run_id)
 
     def _build_paths(self, pipeline: PipelineSpec, run_id: str, node_id: str, node_target: Any) -> ExecutionPaths:
@@ -368,5 +372,6 @@ class Orchestrator:
             record.status = RunStatus.COMPLETED
         record.finished_at = utcnow_iso()
         await self._publish(run_id, "run_completed", status=record.status.value)
+        await self.store.clear_cancel_request(run_id)
         await self.store.persist_run(run_id)
         return record

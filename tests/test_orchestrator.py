@@ -305,6 +305,37 @@ async def test_orchestrator_cancels_running_nodes(tmp_path: Path):
     completed = await orchestrator.wait(run.id, timeout=5)
     assert completed.status.value == "cancelled"
     assert completed.nodes["slow"].status.value == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_honors_cancel_request_from_fresh_instance(tmp_path: Path):
+    orchestrator = make_orchestrator(tmp_path)
+    pipeline = PipelineSpec.model_validate(
+        {
+            "name": "cancel-cross-process",
+            "working_dir": str(tmp_path),
+            "nodes": [
+                {
+                    "id": "slow",
+                    "agent": "codex",
+                    "prompt": "eventually cancelled",
+                }
+            ],
+        }
+    )
+
+    run = await orchestrator.submit(pipeline)
+    await asyncio.sleep(0.2)
+
+    external_store = RunStore(tmp_path / "runs")
+    external_orchestrator = Orchestrator(store=external_store, adapters=orchestrator.adapters, runners=RunnerRegistry())
+    requested = await external_orchestrator.cancel(run.id)
+    completed = await orchestrator.wait(run.id, timeout=5)
+
+    assert requested.status.value == "cancelling"
+    assert completed.status.value == "cancelled"
+    assert completed.nodes["slow"].status.value == "cancelled"
+    assert external_store.cancel_requested(run.id) is False
     assert "Cancelled by user" in orchestrator.store.read_artifact_text(completed.id, "slow", "stderr.log")
 
 
