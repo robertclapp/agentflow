@@ -728,6 +728,20 @@ def test_shell_template_exports_env_var_before_command_respects_prefixed_home_ov
     )
 
 
+def test_shell_template_exports_env_var_before_command_detects_bash_env_file(tmp_path: Path):
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "auth.env").write_text("export ANTHROPIC_API_KEY=test-shell-key\n", encoding="utf-8")
+
+    assert (
+        shell_template_exports_env_var_before_command(
+            f"env HOME={home} BASH_ENV=$HOME/auth.env bash -c '{{command}}'",
+            "ANTHROPIC_API_KEY",
+        )
+        is True
+    )
+
+
 def test_shell_template_exports_env_var_before_command_detects_split_assignment_then_export():
     assert (
         shell_template_exports_env_var_before_command(
