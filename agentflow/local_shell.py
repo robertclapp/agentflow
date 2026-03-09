@@ -45,6 +45,7 @@ _BASHRC_NONINTERACTIVE_GUARDS = (
     re.compile(r"\[\s*-z\s+['\"]?\$PS1['\"]?\s*\]\s*&&\s*return"),
 )
 _EXPORT_STYLE_COMMANDS = {"declare", "typeset"}
+_BASH_LOGIN_FILENAMES = (".bash_profile", ".bash_login", ".profile")
 
 
 def _target_value(target: Any, key: str) -> Any:
@@ -408,7 +409,9 @@ def _resolve_home_shell_source_target(token: str, home: Path) -> Path | None:
         return None
     else:
         raw_path = Path(normalized)
-        candidate = raw_path if raw_path.is_absolute() else resolved_home / raw_path
+        if not raw_path.is_absolute():
+            return None
+        candidate = raw_path
 
     candidate = Path(os.path.normpath(str(candidate)))
 
@@ -861,6 +864,55 @@ def target_uses_interactive_bash(target: Any) -> bool:
         return interactive
 
     return False
+
+
+def target_uses_login_bash(target: Any) -> bool:
+    if bool(_target_value(target, "shell_login")):
+        return True
+
+    shell = _target_value(target, "shell")
+    shell_parts = _split_shell_parts(shell if isinstance(shell, str) else None)
+    if not shell_parts:
+        return False
+
+    for index, part in enumerate(shell_parts):
+        if os.path.basename(part) != "bash":
+            continue
+
+        login = False
+        position = index + 1
+        while position < len(shell_parts):
+            arg = shell_parts[position]
+            if arg == "--":
+                return login
+            if arg == "--login":
+                login = True
+                position += 1
+                continue
+            if arg.startswith("--"):
+                if arg in _BASH_LONG_FLAGS_WITH_VALUE:
+                    position += 2
+                    continue
+                if any(arg.startswith(f"{option}=") for option in _BASH_LONG_FLAGS_WITH_VALUE):
+                    position += 1
+                    continue
+                position += 1
+                continue
+            if not arg.startswith("-") or arg == "-":
+                return login
+            if "l" in arg[1:]:
+                login = True
+            if "c" in arg[1:]:
+                return login
+            position += 1
+        return login
+
+    return False
+
+
+def target_bash_home(target: Any, *, home: Path | None = None) -> Path:
+    shell = _target_value(target, "shell")
+    return _shell_command_effective_home_for_target(shell if isinstance(shell, str) else None, "bash", home=home)
 
 
 def shell_command_uses_kimi_helper(command: str | None) -> bool:

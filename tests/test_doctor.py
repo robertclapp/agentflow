@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from agentflow.doctor import (
+    _check_bash_login_startup,
     _should_probe_local_claude,
     build_bash_login_shell_bridge_recommendation,
     build_local_smoke_doctor_report,
@@ -221,6 +222,27 @@ def test_local_smoke_doctor_report_ok_with_absolute_home_bridge(tmp_path: Path, 
         "name": "bash_login_startup",
         "status": "ok",
         "detail": "Bash login shells fall back to `~/.profile` because neither `~/.bash_profile` nor `~/.bash_login` exists, and it references `~/.bashrc`.",
+    }
+
+
+def test_local_smoke_doctor_report_rejects_relative_bashrc_bridge(tmp_path: Path):
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".profile").write_text('. .bashrc\n', encoding="utf-8")
+    (home / ".bashrc").write_text("kimi(){ :; }\n", encoding="utf-8")
+
+    startup_check = _check_bash_login_startup(home)
+
+    assert startup_check.as_dict() == {
+        "name": "bash_login_startup",
+        "status": "warning",
+        "detail": "Bash login shells fall back to `~/.profile` because neither `~/.bash_profile` nor `~/.bash_login` exists, but it does not reference `~/.bashrc`.",
+    }
+    assert build_bash_login_shell_bridge_recommendation(home).as_dict() == {
+        "target": "~/.profile",
+        "source": "~/.bashrc",
+        "snippet": 'if [ -f "$HOME/.bashrc" ]; then\n  . "$HOME/.bashrc"\nfi\n',
+        "reason": "Bash login shells fall back to `~/.profile` because neither `~/.bash_profile` nor `~/.bash_login` exists, but it does not reference `~/.bashrc`.",
     }
 
 

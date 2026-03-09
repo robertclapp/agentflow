@@ -128,7 +128,9 @@ def _resolve_home_shell_source_target(token: str, home: Path) -> Path | None:
         return None
     else:
         raw_path = Path(normalized)
-        candidate = raw_path if raw_path.is_absolute() else resolved_home / raw_path
+        if not raw_path.is_absolute():
+            return None
+        candidate = raw_path
 
     candidate = Path(os.path.normpath(str(candidate)))
 
@@ -142,7 +144,6 @@ def _resolve_home_shell_source_target(token: str, home: Path) -> Path | None:
 def _shell_sources_file(text: str, filename: str, home: Path | None = None) -> bool:
     if home is None:
         accepted_targets = {
-            filename,
             f"~/{filename}",
             f"$HOME/{filename}",
             f"${{HOME}}/{filename}",
