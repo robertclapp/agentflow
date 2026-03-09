@@ -1088,6 +1088,32 @@ def _bash_startup_read_error_detail(home: Path, login_file: Path, exc: _ShellSta
     )
 
 
+def _bash_startup_chain_context(
+    login_file: Path | None,
+    *,
+    chain: tuple[str, ...] | None = None,
+    shadowed_chain: tuple[str, ...] | None = None,
+    bashrc_exists: bool | None = None,
+    runtime_ready: bool | None = None,
+) -> dict[str, Any]:
+    startup_chain = [f"~/{part}" for part in chain or ()]
+    context: dict[str, Any] = {
+        "login_file": None if login_file is None else f"~/{login_file.name}",
+        "startup_chain": startup_chain,
+        "startup_summary": "none" if not startup_chain else " -> ".join(startup_chain),
+        "bashrc_reachable": bool(chain and chain[-1] == ".bashrc"),
+    }
+    if shadowed_chain is not None:
+        shadowed_startup_chain = [f"~/{part}" for part in shadowed_chain]
+        context["shadowed_startup_chain"] = shadowed_startup_chain
+        context["shadowed_startup_summary"] = " -> ".join(shadowed_startup_chain)
+    if bashrc_exists is not None:
+        context["bashrc_exists"] = bashrc_exists
+    if runtime_ready is not None:
+        context["runtime_ready"] = runtime_ready
+    return context
+
+
 def _check_bash_login_startup(home: Path) -> DoctorCheck:
     login_file = _bash_login_file(home)
     if login_file is None:
@@ -1098,6 +1124,7 @@ def _check_bash_login_startup(home: Path) -> DoctorCheck:
                 "No `~/.bash_profile`, `~/.bash_login`, or `~/.profile` was found for bash login shells; "
                 "create one that sources `~/.bashrc` if you expect login shells to load your `kimi` helper."
             ),
+            context=_bash_startup_chain_context(login_file),
         )
 
     try:
@@ -1107,6 +1134,7 @@ def _check_bash_login_startup(home: Path) -> DoctorCheck:
             name="bash_login_startup",
             status="warning",
             detail=_bash_startup_read_error_detail(home, login_file, exc),
+            context=_bash_startup_chain_context(login_file, chain=(login_file.name,)),
         )
     login_file_clause = _bash_login_file_clause(home, login_file)
     if chain is None:
@@ -1117,6 +1145,7 @@ def _check_bash_login_startup(home: Path) -> DoctorCheck:
                 name="bash_login_startup",
                 status="warning",
                 detail=_bash_startup_read_error_detail(home, login_file, exc),
+                context=_bash_startup_chain_context(login_file, chain=(login_file.name,)),
             )
         if shadowed_chain is not None:
             shadowed_paths = _format_bash_startup_paths(shadowed_chain[:-1])
@@ -1130,11 +1159,17 @@ def _check_bash_login_startup(home: Path) -> DoctorCheck:
                     f"even though {pronoun} {bridge_detail} `~/.bashrc`; "
                     f"reference `~/.bashrc` or `~/{shadowed_chain[0]}` from `~/{login_file.name}`."
                 ),
+                context=_bash_startup_chain_context(
+                    login_file,
+                    chain=(login_file.name,),
+                    shadowed_chain=shadowed_chain,
+                ),
             )
         return DoctorCheck(
             name="bash_login_startup",
             status="warning",
             detail=f"{login_file_clause}, but it does not reference `~/.bashrc`.",
+            context=_bash_startup_chain_context(login_file, chain=(login_file.name,)),
         )
 
     bashrc_path = home / ".bashrc"
@@ -1146,13 +1181,19 @@ def _check_bash_login_startup(home: Path) -> DoctorCheck:
                 f"{login_file_clause}, and it reaches `~/.bashrc` "
                 f"via {_format_bash_startup_paths(chain[1:-1])}, but `~/.bashrc` does not exist."
             )
-        return DoctorCheck(name="bash_login_startup", status="warning", detail=detail)
+        return DoctorCheck(
+            name="bash_login_startup",
+            status="warning",
+            detail=detail,
+            context=_bash_startup_chain_context(login_file, chain=chain, bashrc_exists=False),
+        )
 
     if len(chain) == 2:
         return DoctorCheck(
             name="bash_login_startup",
             status="ok",
             detail=f"{login_file_clause}, and it references `~/.bashrc`.",
+            context=_bash_startup_chain_context(login_file, chain=chain, bashrc_exists=True),
         )
 
     return DoctorCheck(
@@ -1162,6 +1203,7 @@ def _check_bash_login_startup(home: Path) -> DoctorCheck:
             f"{login_file_clause}, and it reaches `~/.bashrc` "
             f"via {_format_bash_startup_paths(chain[1:-1])}."
         ),
+        context=_bash_startup_chain_context(login_file, chain=chain, bashrc_exists=True),
     )
 
 
@@ -1498,6 +1540,10 @@ def _reconcile_bash_login_startup_check(
         return startup_check
 
     login_file = _bash_login_file(home)
+    context = _bash_startup_chain_context(login_file)
+    if isinstance(startup_check.context, dict):
+        context.update(startup_check.context)
+    context["runtime_ready"] = True
     if login_file is None:
         return DoctorCheck(
             name="bash_login_startup",
@@ -1506,6 +1552,7 @@ def _reconcile_bash_login_startup_check(
                 "No `~/.bash_profile`, `~/.bash_login`, or `~/.profile` was found, but `bash -lic` already exposes "
                 "`kimi`, `claude`, and `codex`; a `~/.bashrc` bridge is not required for the bundled smoke pipeline."
             ),
+            context=context,
         )
 
     return DoctorCheck(
@@ -1515,6 +1562,7 @@ def _reconcile_bash_login_startup_check(
             f"{_bash_login_file_clause(home, login_file)}, and `bash -lic` already exposes `kimi`, `claude`, and "
             "`codex`; a `~/.bashrc` bridge is not required for the bundled smoke pipeline."
         ),
+        context=context,
     )
 
 

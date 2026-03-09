@@ -1038,6 +1038,18 @@ def _render_shell_bridge_summary(shell_bridge: object | None) -> str:
     )
 
 
+def _doctor_check_summary_suffix(check: object) -> str:
+    if getattr(check, "name", None) != "bash_login_startup":
+        return ""
+    context = getattr(check, "context", None)
+    if not isinstance(context, dict):
+        return ""
+    startup_summary = context.get("startup_summary")
+    if not isinstance(startup_summary, str) or not startup_summary:
+        return ""
+    return f" (startup={startup_summary})"
+
+
 def _render_doctor_summary(
     report: object,
     *,
@@ -1049,7 +1061,7 @@ def _render_doctor_summary(
     for check in getattr(report, "checks", []) or []:
         lines.append(
             f"- {getattr(check, 'name', 'unknown')}: {_status_value(getattr(check, 'status', 'unknown'))}"
-            f" - {getattr(check, 'detail', '')}"
+            f" - {getattr(check, 'detail', '')}{_doctor_check_summary_suffix(check)}"
         )
     raw_auto_preflight = pipeline.get("auto_preflight") if isinstance(pipeline, dict) else None
     if isinstance(raw_auto_preflight, dict):

@@ -30,6 +30,29 @@ _KIMI_HELPER_OK_DETAIL = (
 )
 
 
+def _startup_context(
+    *startup_chain: str,
+    login_file: str | None = None,
+    shadowed_startup_chain: tuple[str, ...] | None = None,
+    bashrc_exists: bool | None = None,
+    runtime_ready: bool | None = None,
+) -> dict[str, object]:
+    context: dict[str, object] = {
+        "login_file": login_file,
+        "startup_chain": list(startup_chain),
+        "startup_summary": "none" if not startup_chain else " -> ".join(startup_chain),
+        "bashrc_reachable": bool(startup_chain and startup_chain[-1] == "~/.bashrc"),
+    }
+    if shadowed_startup_chain is not None:
+        context["shadowed_startup_chain"] = list(shadowed_startup_chain)
+        context["shadowed_startup_summary"] = " -> ".join(shadowed_startup_chain)
+    if bashrc_exists is not None:
+        context["bashrc_exists"] = bashrc_exists
+    if runtime_ready is not None:
+        context["runtime_ready"] = runtime_ready
+    return context
+
+
 def test_should_probe_local_claude_for_case_mixed_kimi_provider():
     node = SimpleNamespace(
         agent=SimpleNamespace(value="claude"),
@@ -203,6 +226,12 @@ def test_local_smoke_doctor_report_ok_with_profile_bridge(tmp_path: Path, monkey
                 "name": "bash_login_startup",
                 "status": "ok",
                 "detail": "Bash login shells fall back to `~/.profile` because neither `~/.bash_profile` nor `~/.bash_login` exists, and it references `~/.bashrc`.",
+                "context": _startup_context(
+                    "~/.profile",
+                    "~/.bashrc",
+                    login_file="~/.profile",
+                    bashrc_exists=True,
+                ),
             },
             {
                 "name": "kimi_shell_helper",
@@ -478,6 +507,7 @@ def test_local_smoke_doctor_report_ok_with_quoted_home_prefix_bridge(tmp_path: P
         "name": "bash_login_startup",
         "status": "ok",
         "detail": "Bash login shells fall back to `~/.profile` because neither `~/.bash_profile` nor `~/.bash_login` exists, and it references `~/.bashrc`.",
+        "context": _startup_context("~/.profile", "~/.bashrc", login_file="~/.profile", bashrc_exists=True),
     }
 
 
@@ -500,6 +530,7 @@ def test_local_smoke_doctor_report_ok_with_absolute_home_bridge(tmp_path: Path, 
         "name": "bash_login_startup",
         "status": "ok",
         "detail": "Bash login shells fall back to `~/.profile` because neither `~/.bash_profile` nor `~/.bash_login` exists, and it references `~/.bashrc`.",
+        "context": _startup_context("~/.profile", "~/.bashrc", login_file="~/.profile", bashrc_exists=True),
     }
 
 
@@ -515,6 +546,7 @@ def test_local_smoke_doctor_report_rejects_relative_bashrc_bridge(tmp_path: Path
         "name": "bash_login_startup",
         "status": "warning",
         "detail": "Bash login shells fall back to `~/.profile` because neither `~/.bash_profile` nor `~/.bash_login` exists, but it does not reference `~/.bashrc`.",
+        "context": _startup_context("~/.profile", login_file="~/.profile"),
     }
     assert build_bash_login_shell_bridge_recommendation(home).as_dict() == {
         "target": "~/.profile",
@@ -545,6 +577,7 @@ def test_local_smoke_doctor_report_accepts_symlinked_home_bashrc(tmp_path: Path,
         "name": "bash_login_startup",
         "status": "ok",
         "detail": "Bash login shells fall back to `~/.profile` because neither `~/.bash_profile` nor `~/.bash_login` exists, and it references `~/.bashrc`.",
+        "context": _startup_context("~/.profile", "~/.bashrc", login_file="~/.profile", bashrc_exists=True),
     }
 
 
@@ -574,6 +607,7 @@ def test_local_smoke_doctor_report_follows_transitive_profile_bridge(tmp_path: P
         "name": "bash_login_startup",
         "status": "ok",
         "detail": "Bash login shells use `~/.bash_profile`, and it reaches `~/.bashrc` via `~/.profile`.",
+        "context": _startup_context("~/.bash_profile", "~/.profile", "~/.bashrc", login_file="~/.bash_profile", bashrc_exists=True),
     }
 
 
@@ -603,6 +637,7 @@ def test_local_smoke_doctor_report_follows_transitive_quoted_home_bridge(tmp_pat
         "name": "bash_login_startup",
         "status": "ok",
         "detail": "Bash login shells use `~/.bash_profile`, and it reaches `~/.bashrc` via `~/.profile`.",
+        "context": _startup_context("~/.bash_profile", "~/.profile", "~/.bashrc", login_file="~/.bash_profile", bashrc_exists=True),
     }
 
 
@@ -632,6 +667,7 @@ def test_local_smoke_doctor_report_follows_transitive_absolute_home_bridge(tmp_p
         "name": "bash_login_startup",
         "status": "ok",
         "detail": "Bash login shells use `~/.bash_profile`, and it reaches `~/.bashrc` via `~/.profile`.",
+        "context": _startup_context("~/.bash_profile", "~/.profile", "~/.bashrc", login_file="~/.bash_profile", bashrc_exists=True),
     }
 
 
@@ -661,6 +697,13 @@ def test_local_smoke_doctor_report_keeps_custom_home_bridge_when_kimi_fails(tmp_
         "name": "bash_login_startup",
         "status": "ok",
         "detail": "Bash login shells use `~/.bash_profile`, and it reaches `~/.bashrc` via `~/.bash_agentflow`.",
+        "context": _startup_context(
+            "~/.bash_profile",
+            "~/.bash_agentflow",
+            "~/.bashrc",
+            login_file="~/.bash_profile",
+            bashrc_exists=True,
+        ),
     }
 
 
@@ -683,6 +726,13 @@ def test_local_smoke_doctor_report_accepts_runtime_ready_shell_when_referenced_b
         "detail": (
             "Bash login shells fall back to `~/.profile` because neither `~/.bash_profile` nor `~/.bash_login` exists, and `bash -lic` already exposes `kimi`, `claude`, and `codex`; "
             "a `~/.bashrc` bridge is not required for the bundled smoke pipeline."
+        ),
+        "context": _startup_context(
+            "~/.profile",
+            "~/.bashrc",
+            login_file="~/.profile",
+            bashrc_exists=False,
+            runtime_ready=True,
         ),
     }
 
@@ -707,6 +757,7 @@ def test_local_smoke_doctor_report_accepts_runtime_ready_shell_without_bash_logi
             "No `~/.bash_profile`, `~/.bash_login`, or `~/.profile` was found, but `bash -lic` already exposes "
             "`kimi`, `claude`, and `codex`; a `~/.bashrc` bridge is not required for the bundled smoke pipeline."
         ),
+        "context": _startup_context(login_file=None, runtime_ready=True),
     }
 
 
@@ -731,6 +782,12 @@ def test_local_smoke_doctor_report_accepts_runtime_ready_shell_when_bash_profile
         "detail": (
             "Bash login shells use `~/.bash_profile`, and `bash -lic` already exposes `kimi`, `claude`, and "
             "`codex`; a `~/.bashrc` bridge is not required for the bundled smoke pipeline."
+        ),
+        "context": _startup_context(
+            "~/.bash_profile",
+            login_file="~/.bash_profile",
+            shadowed_startup_chain=("~/.profile", "~/.bashrc"),
+            runtime_ready=True,
         ),
     }
 
@@ -759,6 +816,7 @@ def test_local_smoke_doctor_report_accepts_runtime_ready_shell_with_commented_ba
             "Bash login shells fall back to `~/.profile` because neither `~/.bash_profile` nor `~/.bash_login` exists, and `bash -lic` already exposes `kimi`, `claude`, and `codex`; "
             "a `~/.bashrc` bridge is not required for the bundled smoke pipeline."
         ),
+        "context": _startup_context("~/.profile", login_file="~/.profile", runtime_ready=True),
     }
 
 
@@ -787,6 +845,12 @@ def test_local_smoke_doctor_report_accepts_runtime_ready_shell_with_commented_tr
             "Bash login shells use `~/.bash_profile`, and `bash -lic` already exposes `kimi`, `claude`, and "
             "`codex`; a `~/.bashrc` bridge is not required for the bundled smoke pipeline."
         ),
+        "context": _startup_context(
+            "~/.bash_profile",
+            login_file="~/.bash_profile",
+            shadowed_startup_chain=("~/.profile", "~/.bashrc"),
+            runtime_ready=True,
+        ),
     }
 
 
@@ -814,6 +878,7 @@ def test_local_smoke_doctor_report_fails_when_kimi_helper_missing(tmp_path: Path
                 "name": "bash_login_startup",
                 "status": "warning",
                 "detail": "Bash login shells use `~/.bash_profile`, but it does not reference `~/.bashrc`.",
+                "context": _startup_context("~/.bash_profile", login_file="~/.bash_profile"),
             },
             {
                 "name": "kimi_shell_helper",
@@ -1189,6 +1254,12 @@ def test_local_smoke_doctor_report_fails_when_bash_cannot_launch(tmp_path: Path,
                 "name": "bash_login_startup",
                 "status": "ok",
                 "detail": "Bash login shells fall back to `~/.profile` because neither `~/.bash_profile` nor `~/.bash_login` exists, and it references `~/.bashrc`.",
+                "context": _startup_context(
+                    "~/.profile",
+                    "~/.bashrc",
+                    login_file="~/.profile",
+                    bashrc_exists=True,
+                ),
             },
             {
                 "name": "kimi_shell_helper",
@@ -1291,6 +1362,7 @@ def test_local_smoke_doctor_report_warns_when_login_file_is_unreadable(tmp_path:
             "Bash login shells use `~/.bash_profile`, but AgentFlow could not read `~/.bash_profile` while "
             "checking whether login shells reach `~/.bashrc`: Permission denied."
         ),
+        "context": _startup_context("~/.bash_profile", login_file="~/.bash_profile"),
     }
 
 
@@ -1342,6 +1414,7 @@ def test_bash_login_startup_ignores_echoed_source_text(tmp_path: Path):
             "Bash login shells fall back to `~/.profile` because neither `~/.bash_profile` nor `~/.bash_login` "
             "exists, but it does not reference `~/.bashrc`."
         ),
+        "context": _startup_context("~/.profile", login_file="~/.profile"),
     }
 
 

@@ -11,7 +11,7 @@ from typer.testing import CliRunner
 
 import agentflow.cli
 import agentflow.local_shell
-from agentflow.cli import app
+from agentflow.cli import app, _render_doctor_summary
 from agentflow.doctor import DoctorCheck, DoctorReport, ShellBridgeRecommendation
 from agentflow.specs import ProviderConfig
 
@@ -54,6 +54,10 @@ def _shell_bridge_recommendation() -> ShellBridgeRecommendation:
         snippet='if [ -f "$HOME/.profile" ]; then\n  . "$HOME/.profile"\nfi\n',
         reason="Bash login shells use `~/.bash_profile`, so `~/.profile` never runs.",
     )
+
+
+def _bash_startup_context(summary: str) -> dict[str, object]:
+    return {"startup_summary": summary}
 
 
 def _completed_run(
@@ -116,6 +120,70 @@ def test_python_module_entrypoint_displays_help():
     assert "rerun" in completed.stdout
     assert "check-local" in completed.stdout
     assert "smoke" in completed.stdout
+
+
+def test_render_doctor_summary_appends_bash_startup_summary_suffix():
+    report = DoctorReport(
+        status="ok",
+        checks=[
+            DoctorCheck(
+                name="bash_login_startup",
+                status="ok",
+                detail="startup ready",
+                context=_bash_startup_context("~/.profile -> ~/.bashrc"),
+            )
+        ],
+    )
+
+    assert _render_doctor_summary(report) == (
+        "Doctor: ok\n"
+        "- bash_login_startup: ok - startup ready (startup=~/.profile -> ~/.bashrc)"
+    )
+
+
+def test_doctor_command_json_preserves_bash_startup_context(monkeypatch):
+    monkeypatch.setattr(
+        agentflow.cli,
+        "build_local_smoke_doctor_report",
+        lambda: DoctorReport(
+            status="ok",
+            checks=[
+                DoctorCheck(
+                    name="bash_login_startup",
+                    status="ok",
+                    detail="startup ready",
+                    context={
+                        "login_file": "~/.profile",
+                        "startup_chain": ["~/.profile", "~/.bashrc"],
+                        "startup_summary": "~/.profile -> ~/.bashrc",
+                        "bashrc_reachable": True,
+                        "bashrc_exists": True,
+                    },
+                )
+            ],
+        ),
+    )
+
+    result = runner.invoke(app, ["doctor", "--output", "json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == {
+        "status": "ok",
+        "checks": [
+            {
+                "name": "bash_login_startup",
+                "status": "ok",
+                "detail": "startup ready",
+                "context": {
+                    "login_file": "~/.profile",
+                    "startup_chain": ["~/.profile", "~/.bashrc"],
+                    "startup_summary": "~/.profile -> ~/.bashrc",
+                    "bashrc_reachable": True,
+                    "bashrc_exists": True,
+                },
+            }
+        ],
+    }
 
 
 def test_validate_resolves_working_dir_relative_to_pipeline_file(tmp_path, monkeypatch):
