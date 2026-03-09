@@ -23,7 +23,9 @@ from agentflow.local_shell import (
     target_bash_login_startup_chain,
     target_bash_login_startup_file,
     target_bash_startup_exports_env_var,
+    target_uses_bash,
     target_uses_interactive_bash,
+    target_uses_login_bash,
 )
 
 
@@ -1036,7 +1038,7 @@ def test_target_bash_startup_exports_env_var_uses_nested_login_shell_wrapper_env
     }
 
     assert target_bash_startup_exports_env_var(target, "ANTHROPIC_API_KEY", home=tmp_path) is True
-    assert observed["command"] == ["bash", "-lc", 'test -n "${ANTHROPIC_API_KEY:-}"']
+    assert observed["command"] == ["bash", "-lic", 'test -n "${ANTHROPIC_API_KEY:-}"']
     assert observed["env"]["AGENTFLOW_KIMI_ENV_FILE"] == str(auth_file)
     assert observed["env"]["HOME"] == str(home)
 

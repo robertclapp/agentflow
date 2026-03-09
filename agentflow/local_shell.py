@@ -1708,18 +1708,25 @@ def _is_kimi_probe_argument(tokens: list[str], index: int) -> bool:
 
 def target_uses_bash(target: Any) -> bool:
     shell = _target_value(target, "shell")
-    if not isinstance(shell, str) or not shell.strip():
-        return False
-    return any(os.path.basename(part) == "bash" for part in _split_shell_parts(shell))
+    return _target_bash_shell_flags({"shell": shell}).uses_bash
 
 
 def _target_bash_shell_flags(target: Any) -> _BashShellFlags:
     shell = _target_value(target, "shell")
-    shell_parts = _split_shell_parts(shell if isinstance(shell, str) else None)
+    return _bash_shell_flags_for_command(shell if isinstance(shell, str) else None)
+
+
+def _bash_shell_flags_for_command(command: str | None) -> _BashShellFlags:
+    shell_parts = _split_shell_parts(command)
     if not shell_parts:
         return _BashShellFlags()
 
     for index, part in enumerate(shell_parts):
+        if index > 0 and _is_command_flag(shell_parts[index - 1]):
+            nested_flags = _bash_shell_flags_for_command(part)
+            if nested_flags.uses_bash:
+                return nested_flags
+
         if os.path.basename(part) != "bash":
             continue
 

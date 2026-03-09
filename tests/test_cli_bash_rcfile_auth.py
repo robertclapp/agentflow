@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+import agentflow.cli
 import pytest
 from typer.testing import CliRunner
 
@@ -169,6 +170,8 @@ nodes:
         encoding="utf-8",
     )
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(agentflow.cli, "build_pipeline_local_claude_readiness_checks", lambda pipeline: [])
+    monkeypatch.setattr(agentflow.cli, "build_pipeline_local_claude_readiness_info_checks", lambda pipeline: [])
 
     result = runner.invoke(app, ["doctor", str(pipeline_path), "--output", "summary"])
 
