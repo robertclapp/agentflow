@@ -849,6 +849,20 @@ def test_shell_template_exports_env_var_before_command_detects_bash_env_file(tmp
     )
 
 
+def test_shell_template_exports_env_var_before_command_detects_bash_env_file_with_indirect_home(tmp_path: Path):
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "auth.env").write_text("export ANTHROPIC_API_KEY=test-shell-key\n", encoding="utf-8")
+
+    assert (
+        shell_template_exports_env_var_before_command(
+            f"env CUSTOM_HOME={home} HOME=$CUSTOM_HOME BASH_ENV=$HOME/auth.env bash -c '{{command}}'",
+            "ANTHROPIC_API_KEY",
+        )
+        is True
+    )
+
+
 def test_shell_template_exports_env_var_before_command_detects_bash_env_file_from_launch_env(tmp_path: Path):
     home = tmp_path / "home"
     home.mkdir()
@@ -1070,6 +1084,30 @@ def test_target_bash_home_uses_exec_prefixed_shell_wrapper_env(tmp_path: Path):
     }
 
     assert target_bash_home(target) == home
+
+
+def test_target_bash_home_resolves_indirect_home_from_shell_wrapper_env(tmp_path: Path):
+    home = tmp_path / "home"
+    home.mkdir()
+
+    target = {
+        "kind": "local",
+        "shell": f"exec env CUSTOM_HOME={home} HOME=$CUSTOM_HOME bash -lic '{{command}}'",
+    }
+
+    assert target_bash_home(target) == home
+
+
+def test_target_bash_home_resolves_indirect_home_from_launch_env(tmp_path: Path):
+    home = tmp_path / "home"
+    home.mkdir()
+
+    target = {
+        "kind": "local",
+        "shell": "bash",
+    }
+
+    assert target_bash_home(target, env={"CUSTOM_HOME": str(home), "HOME": "$CUSTOM_HOME"}) == home
 
 
 def test_target_uses_bash_detects_nested_login_and_interactive_bash_wrapper():

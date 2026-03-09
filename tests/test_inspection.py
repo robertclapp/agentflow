@@ -96,3 +96,39 @@ nodes:
         "Startup files: ~/.bash_profile=missing, ~/.bash_login=missing, ~/.profile=present"
         in render_launch_inspection_summary(report)
     )
+
+
+def test_build_launch_inspection_summary_resolves_indirect_bootstrap_home_and_shell_auth(
+    tmp_path,
+    monkeypatch,
+):
+    process_home = tmp_path / "process-home"
+    process_home.mkdir()
+    custom_home = tmp_path / "custom-home"
+    custom_home.mkdir()
+    (custom_home / "auth.env").write_text("export ANTHROPIC_API_KEY=test-shell-key\n", encoding="utf-8")
+
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        f"""name: inspect-indirect-custom-home
+working_dir: .
+nodes:
+  - id: review
+    agent: claude
+    prompt: hi
+    target:
+      kind: local
+      shell: env CUSTOM_HOME={custom_home} HOME=$CUSTOM_HOME BASH_ENV=$HOME/auth.env bash -c '{{command}}'
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("HOME", str(process_home))
+
+    pipeline = load_pipeline_from_path(pipeline_path)
+    report = build_launch_inspection(pipeline, runs_dir=str(tmp_path / ".agentflow"))
+    summary = build_launch_inspection_summary(report)
+
+    assert summary["nodes"][0]["bootstrap_home"] == str(custom_home.resolve())
+    assert summary["nodes"][0]["auth"] == "`ANTHROPIC_API_KEY` via `target.shell`"
+    assert f"Bootstrap home: {custom_home.resolve()}" in render_launch_inspection_summary(report)

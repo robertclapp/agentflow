@@ -331,6 +331,19 @@ def _shell_command_prefix_env_value_for_target(command: str | None, env_var: str
     return _shell_command_prefix_env_for_target(command, target).get(env_var)
 
 
+def _shell_command_env_for_target(
+    command: str | None,
+    target: str,
+    *,
+    env: dict[str, str] | None = None,
+) -> dict[str, str]:
+    resolved: dict[str, str] = {}
+    if isinstance(env, dict):
+        resolved.update({str(key): str(value) for key, value in env.items() if value is not None})
+    resolved.update(_shell_command_prefix_env_for_target(command, target))
+    return resolved
+
+
 def _shell_command_program_for_target(command: str | None, target: str) -> str | None:
     if not isinstance(command, str) or not command.strip() or not target:
         return None
@@ -457,12 +470,14 @@ def _shell_command_effective_home_for_target(
     *,
     home: Path | None = None,
     cwd: Path | str | None = None,
+    env: dict[str, str] | None = None,
 ) -> Path:
     resolved_home = _resolved_home_path(home)
-    home_value = _shell_command_prefix_env_value_for_target(command, "HOME", target)
+    resolved_env = _shell_command_env_for_target(command, target, env=env)
+    home_value = resolved_env.get("HOME")
     if not home_value:
         return resolved_home
-    return _resolve_shell_path(home_value, home=resolved_home, cwd=cwd)
+    return _resolve_shell_path(home_value, home=resolved_home, cwd=cwd, env=resolved_env)
 
 
 def _expand_shell_path_env_references(path: str, env: dict[str, str] | None = None) -> str:
@@ -1031,6 +1046,7 @@ def bash_login_shell_loads_command(
         "bash",
         home=resolved_home,
         cwd=cwd,
+        env=env,
     )
     shell_env = _shell_command_prefix_env_for_target(bash_shell, "bash")
     launch_env = os.environ.copy()
@@ -1114,13 +1130,12 @@ def _bash_env_file_for_shell_target(
     cwd: Path | str | None = None,
     env: dict[str, str] | None = None,
 ) -> tuple[Path, Path] | None:
-    resolved_home = _shell_command_effective_home_for_target(command, "bash", home=home, cwd=cwd)
-    bash_env = _shell_command_prefix_env_value_for_target(command, "BASH_ENV", "bash")
-    if not bash_env and isinstance(env, dict):
-        bash_env = str(env.get("BASH_ENV", "") or "").strip()
+    resolved_home = _shell_command_effective_home_for_target(command, "bash", home=home, cwd=cwd, env=env)
+    resolved_env = _shell_command_env_for_target(command, "bash", env=env)
+    bash_env = str(resolved_env.get("BASH_ENV", "") or "").strip()
     if not bash_env:
         return None
-    path = _resolve_shell_path(bash_env, home=resolved_home, cwd=cwd, env=env)
+    path = _resolve_shell_path(bash_env, home=resolved_home, cwd=cwd, env=resolved_env)
     return resolved_home, path
 
 
@@ -1154,8 +1169,9 @@ def _shell_command_bash_rcfile_path(
                     active_command,
                     home=home,
                     cwd=cwd,
+                    env=env,
                 )
-                nested_env.update(_shell_command_prefix_env_for_target(command, active_command))
+                nested_env = _shell_command_env_for_target(command, active_command, env=env)
             nested = _shell_command_bash_rcfile_path(token, home=nested_home, cwd=cwd, env=nested_env)
             if nested is not None:
                 return nested
@@ -1186,9 +1202,8 @@ def _shell_command_bash_rcfile_path(
                 index += 1
                 continue
 
-            resolved_home = _shell_command_effective_home_for_target(command, "bash", home=home, cwd=cwd)
-            resolved_env = dict(env or {})
-            resolved_env.update(_shell_command_prefix_env_for_target(command, "bash"))
+            resolved_home = _shell_command_effective_home_for_target(command, "bash", home=home, cwd=cwd, env=env)
+            resolved_env = _shell_command_env_for_target(command, "bash", env=env)
             interactive = False
             rcfile_path: Path | None = None
             position = index + 1
@@ -1271,9 +1286,8 @@ def _shell_command_env_var_value_from_bash_rcfile(
     if not isinstance(command, str) or not command.strip() or not env_var:
         return None
 
-    resolved_home = _shell_command_effective_home_for_target(command, "bash", home=home, cwd=cwd)
-    resolved_env = dict(env or {})
-    resolved_env.update(_shell_command_prefix_env_for_target(command, "bash"))
+    resolved_home = _shell_command_effective_home_for_target(command, "bash", home=home, cwd=cwd, env=env)
+    resolved_env = _shell_command_env_for_target(command, "bash", env=env)
     rcfile_path = _shell_command_bash_rcfile_path(command, home=resolved_home, cwd=cwd, env=resolved_env)
     if rcfile_path is None:
         return None
@@ -1334,12 +1348,18 @@ def _shell_command_loads_function_from_sourced_file_before_target(
                 function_name,
                 target,
                 home=(
-                    _shell_command_effective_home_for_target(command, active_command, home=home, cwd=cwd)
+                    _shell_command_effective_home_for_target(
+                        command,
+                        active_command,
+                        home=home,
+                        cwd=cwd,
+                        env=env,
+                    )
                     if active_command is not None
                     else home
                 ),
                 cwd=cwd,
-                env=env,
+                env=(_shell_command_env_for_target(command, active_command, env=env) if active_command else env),
             ):
             return True
 
@@ -1401,12 +1421,18 @@ def _shell_command_env_var_value_from_sourced_file_before_target(
                 env_var,
                 target,
                 home=(
-                    _shell_command_effective_home_for_target(command, active_command, home=home, cwd=cwd)
+                    _shell_command_effective_home_for_target(
+                        command,
+                        active_command,
+                        home=home,
+                        cwd=cwd,
+                        env=env,
+                    )
                     if active_command is not None
                     else home
                 ),
                 cwd=cwd,
-                env=env,
+                env=(_shell_command_env_for_target(command, active_command, env=env) if active_command else env),
             )
             if nested is not None:
                 return nested
@@ -1944,12 +1970,13 @@ def target_bash_home(
     if isinstance(env, dict):
         env_home = str(env.get("HOME", "")).strip()
         if env_home:
-            effective_home = _resolve_shell_path(env_home, home=effective_home, cwd=cwd)
+            effective_home = _resolve_shell_path(env_home, home=effective_home, cwd=cwd, env=env)
     return _shell_command_effective_home_for_target(
         shell if isinstance(shell, str) else None,
         "bash",
         home=effective_home,
         cwd=cwd,
+        env=env,
     )
 
 
@@ -2346,6 +2373,7 @@ def kimi_shell_init_requires_interactive_bash_warning(
         "bash",
         home=home,
         cwd=cwd,
+        env=env,
     )
     login_shell_loads_kimi = uses_login_bash and not login_startup_disabled and bash_login_shell_loads_command(
         "kimi",
