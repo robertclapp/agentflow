@@ -71,6 +71,8 @@ accepted_codex_auth_fragments = (
     "- codex_auth: ok - Node `codex_plan` (codex) can authenticate local Codex after the node shell bootstrap via `OPENAI_API_KEY`.",
     "- codex_auth: ok - Node `codex_plan` (codex) can authenticate local Codex after the node shell bootstrap via `codex login status`.",
     "- codex_auth: ok - Node `codex_plan` (codex) can authenticate local Codex after the node shell bootstrap via `codex login status` or `OPENAI_API_KEY`.",
+    "- codex_auth: ok - Node `codex_plan` (codex) can authenticate local Codex after the node shell bootstrap via `OPENAI_API_KEY` + `codex login status`.",
+    "- codex_auth: ok - Node `codex_plan` (codex) can authenticate local Codex after the node shell bootstrap via `codex login status` + `OPENAI_API_KEY`.",
 )
 if not any(fragment in stdout_text for fragment in accepted_codex_auth_fragments):
     raise SystemExit(

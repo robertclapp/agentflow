@@ -35,6 +35,13 @@ select_custom_local_kimi_pipeline_mode() {
       CUSTOM_LOCAL_KIMI_EXPECTED_TRIGGER="target.shell_init"
       CUSTOM_LOCAL_KIMI_PIPELINE_WRITER="write_custom_local_kimi_shell_init_pipeline"
       ;;
+    shell-wrapper)
+      CUSTOM_LOCAL_KIMI_PIPELINE_MODE="$pipeline_mode"
+      CUSTOM_LOCAL_KIMI_PIPELINE_SUFFIX="-shell-wrapper"
+      CUSTOM_LOCAL_KIMI_PIPELINE_LABEL="target.shell wrapper"
+      CUSTOM_LOCAL_KIMI_EXPECTED_TRIGGER="target.shell"
+      CUSTOM_LOCAL_KIMI_PIPELINE_WRITER="write_custom_local_kimi_shell_wrapper_pipeline"
+      ;;
     *)
       printf 'unsupported AGENTFLOW_KIMI_PIPELINE_MODE: %s\n' "$pipeline_mode" >&2
       return 1
@@ -93,6 +100,42 @@ local_target_defaults:
   shell_login: true
   shell_interactive: true
   shell_init: kimi
+nodes:
+  - id: codex_plan
+    agent: codex
+    env:
+      OPENAI_BASE_URL: ""
+    prompt: |
+      Reply with exactly: codex ok
+    timeout_seconds: 180
+    success_criteria:
+      - kind: output_contains
+        value: codex ok
+
+  - id: claude_review
+    agent: claude
+    provider: kimi
+    prompt: |
+      Reply with exactly: claude ok
+    timeout_seconds: 180
+    success_criteria:
+      - kind: output_contains
+        value: claude ok
+YAML
+}
+
+write_custom_local_kimi_shell_wrapper_pipeline() {
+  local pipeline_path="$1"
+  local pipeline_name="$2"
+  local pipeline_description="$3"
+
+  cat >"$pipeline_path" <<YAML
+name: $pipeline_name
+description: $pipeline_description
+working_dir: .
+concurrency: 2
+local_target_defaults:
+  shell: "bash -lic 'command -v kimi >/dev/null 2>&1 && kimi && {command}'"
 nodes:
   - id: codex_plan
     agent: codex

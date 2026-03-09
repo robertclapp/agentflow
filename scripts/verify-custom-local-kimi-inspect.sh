@@ -50,6 +50,9 @@ PIPELINE_DIR="$tmpdir" STDOUT_PATH="$stdout_path" EXPECTED_TRIGGER="$CUSTOM_LOCA
     shell-init)
       printf "%s" "Launch: bash -l -i -c 'kimi && eval \"\$AGENTFLOW_TARGET_COMMAND\"'"
       ;;
+    shell-wrapper)
+      printf "%s" "Launch: bash -lic 'command -v kimi >/dev/null 2>&1 && kimi && eval \"\$AGENTFLOW_TARGET_COMMAND\"'"
+      ;;
   esac
 )" EXPECTED_BOOTSTRAP="$(
   case "$CUSTOM_LOCAL_KIMI_PIPELINE_MODE" in
@@ -58,6 +61,9 @@ PIPELINE_DIR="$tmpdir" STDOUT_PATH="$stdout_path" EXPECTED_TRIGGER="$CUSTOM_LOCA
       ;;
     shell-init)
       printf "%s" "Bootstrap: shell=bash, login=true, startup="
+      ;;
+    shell-wrapper)
+      printf "%s" "Bootstrap: shell=bash -lic 'command -v kimi >/dev/null 2>&1 && kimi && {command}', login=true, startup="
       ;;
   esac
 )" "$python_bin" - <<'PY'
