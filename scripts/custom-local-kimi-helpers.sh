@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+_AGENTFLOW_CUSTOM_LOCAL_KIMI_HELPERS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_AGENTFLOW_CUSTOM_LOCAL_KIMI_REPO_ROOT="$(cd "$_AGENTFLOW_CUSTOM_LOCAL_KIMI_HELPERS_DIR/.." && pwd)"
+
 agentflow_repo_python() {
   local repo_root="$1"
   local python_bin="${AGENTFLOW_PYTHON:-}"
@@ -119,14 +122,57 @@ select_custom_local_kimi_pipeline_mode() {
   esac
 }
 
-write_custom_local_kimi_pipeline() {
+write_custom_local_kimi_pipeline_from_example() {
   local pipeline_path="$1"
   local pipeline_name="$2"
   local pipeline_description="$3"
+  local example_name="$4"
+  local python_bin
+  local example_path="$_AGENTFLOW_CUSTOM_LOCAL_KIMI_REPO_ROOT/examples/$example_name"
 
-  cat >"$pipeline_path" <<YAML
-name: $pipeline_name
-description: $pipeline_description
+  python_bin="$(agentflow_repo_python "$_AGENTFLOW_CUSTOM_LOCAL_KIMI_REPO_ROOT")"
+
+  "$python_bin" - "$example_path" "$pipeline_path" "$pipeline_name" "$pipeline_description" <<'PY'
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import yaml
+
+
+class _LiteralString(str):
+    pass
+
+
+class _LiteralDumper(yaml.SafeDumper):
+    pass
+
+
+def _represent_literal_string(dumper: _LiteralDumper, data: _LiteralString):
+    return dumper.represent_scalar("tag:yaml.org,2002:str", str(data), style="|")
+
+
+def _mark_literal_strings(value):
+    if isinstance(value, str):
+        return _LiteralString(value) if "\n" in value else value
+    if isinstance(value, list):
+        return [_mark_literal_strings(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _mark_literal_strings(item) for key, item in value.items()}
+    return value
+
+
+_LiteralDumper.add_representer(_LiteralString, _represent_literal_string)
+
+example_path = Path(sys.argv[1])
+pipeline_path = Path(sys.argv[2])
+pipeline_name = sys.argv[3]
+pipeline_description = sys.argv[4]
+
+if not example_path.is_file():
+    fallback_templates = {
+        "local-real-agents-kimi-smoke.yaml": """
 working_dir: .
 concurrency: 2
 local_target_defaults:
@@ -142,7 +188,6 @@ nodes:
     success_criteria:
       - kind: output_contains
         value: codex ok
-
   - id: claude_review
     agent: claude
     provider: kimi
@@ -152,17 +197,8 @@ nodes:
     success_criteria:
       - kind: output_contains
         value: claude ok
-YAML
-}
-
-write_custom_local_kimi_shell_init_pipeline() {
-  local pipeline_path="$1"
-  local pipeline_name="$2"
-  local pipeline_description="$3"
-
-  cat >"$pipeline_path" <<YAML
-name: $pipeline_name
-description: $pipeline_description
+""",
+        "local-real-agents-kimi-shell-init-smoke.yaml": """
 working_dir: .
 concurrency: 2
 local_target_defaults:
@@ -181,7 +217,6 @@ nodes:
     success_criteria:
       - kind: output_contains
         value: codex ok
-
   - id: claude_review
     agent: claude
     provider: kimi
@@ -191,17 +226,8 @@ nodes:
     success_criteria:
       - kind: output_contains
         value: claude ok
-YAML
-}
-
-write_custom_local_kimi_shell_wrapper_pipeline() {
-  local pipeline_path="$1"
-  local pipeline_name="$2"
-  local pipeline_description="$3"
-
-  cat >"$pipeline_path" <<YAML
-name: $pipeline_name
-description: $pipeline_description
+""",
+        "local-real-agents-kimi-shell-wrapper-smoke.yaml": """
 working_dir: .
 concurrency: 2
 local_target_defaults:
@@ -217,7 +243,6 @@ nodes:
     success_criteria:
       - kind: output_contains
         value: codex ok
-
   - id: claude_review
     agent: claude
     provider: kimi
@@ -227,5 +252,58 @@ nodes:
     success_criteria:
       - kind: output_contains
         value: claude ok
-YAML
+""",
+    }
+    template_name = example_path.name
+    try:
+        payload = yaml.safe_load(fallback_templates[template_name])
+    except KeyError as exc:
+        raise SystemExit(f"Bundled local Kimi example not found: {example_path}") from exc
+else:
+    payload = yaml.safe_load(example_path.read_text(encoding="utf-8"))
+payload["name"] = pipeline_name
+payload["description"] = pipeline_description
+payload = _mark_literal_strings(payload)
+
+pipeline_path.write_text(
+    yaml.dump(payload, Dumper=_LiteralDumper, sort_keys=False),
+    encoding="utf-8",
+)
+PY
+}
+
+write_custom_local_kimi_pipeline() {
+  local pipeline_path="$1"
+  local pipeline_name="$2"
+  local pipeline_description="$3"
+
+  write_custom_local_kimi_pipeline_from_example \
+    "$pipeline_path" \
+    "$pipeline_name" \
+    "$pipeline_description" \
+    "local-real-agents-kimi-smoke.yaml"
+}
+
+write_custom_local_kimi_shell_init_pipeline() {
+  local pipeline_path="$1"
+  local pipeline_name="$2"
+  local pipeline_description="$3"
+
+  write_custom_local_kimi_pipeline_from_example \
+    "$pipeline_path" \
+    "$pipeline_name" \
+    "$pipeline_description" \
+    "local-real-agents-kimi-shell-init-smoke.yaml"
+}
+
+write_custom_local_kimi_shell_wrapper_pipeline() {
+  local pipeline_path="$1"
+  local pipeline_name="$2"
+  local pipeline_description="$3"
+
+  write_custom_local_kimi_pipeline_from_example \
+    "$pipeline_path" \
+    "$pipeline_name" \
+    "$pipeline_description" \
+    "local-real-agents-kimi-shell-wrapper-smoke.yaml"
 }
