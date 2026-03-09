@@ -49,6 +49,13 @@ _EXPORT_STYLE_COMMANDS = {"declare", "typeset"}
 _BASH_LOGIN_FILENAMES = (".bash_profile", ".bash_login", ".profile")
 
 
+class _ShellStartupReadError(RuntimeError):
+    def __init__(self, path: str, detail: str):
+        super().__init__(detail)
+        self.path = path
+        self.detail = detail
+
+
 def _target_value(target: Any, key: str) -> Any:
     if isinstance(target, dict):
         return target.get(key)
@@ -549,6 +556,15 @@ def _resolve_shell_source_target(token: str, *, home: Path, cwd: Path | str | No
     return _resolve_shell_path(normalized, home=home, cwd=cwd)
 
 
+def _shell_startup_read_error(home: Path, path: Path, exc: OSError) -> _ShellStartupReadError:
+    try:
+        display_path = f"~/{_home_relative_shell_path(home, path)}"
+    except ValueError:
+        display_path = str(path)
+    detail = (exc.strerror or str(exc)).strip()
+    return _ShellStartupReadError(display_path, detail)
+
+
 def _read_shell_file_text(path: Path) -> str | None:
     try:
         return path.read_text(encoding="utf-8")
@@ -713,9 +729,10 @@ def _bash_login_startup_chain(
     if name in seen:
         return (name,)
 
-    text = _read_shell_file_text(normalized_startup)
-    if text is None:
-        return (name,)
+    try:
+        text = normalized_startup.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise _shell_startup_read_error(resolved_home, normalized_startup, exc) from exc
 
     bashrc_path = Path(os.path.normpath(str(resolved_home / ".bashrc")))
     targets: list[Path] = []
@@ -1424,7 +1441,12 @@ def target_bash_login_startup_chain(
     if startup_file is None:
         return None
 
-    return tuple(f"~/{path}" for path in _bash_login_startup_chain(resolved_home, startup_file, cwd=cwd))
+    try:
+        chain = _bash_login_startup_chain(resolved_home, startup_file, cwd=cwd)
+    except _ShellStartupReadError:
+        return (f"~/{startup_file.relative_to(resolved_home).as_posix()}",)
+
+    return tuple(f"~/{path}" for path in chain)
 
 
 def summarize_target_bash_login_startup(
@@ -1453,15 +1475,31 @@ def target_bash_login_startup_warning(
         return None
 
     resolved_home = target_bash_home(target, home=home, env=env, cwd=cwd)
-    startup_chain = target_bash_login_startup_chain(target, home=home, env=env, cwd=cwd)
-    if startup_chain is None:
+    startup_file = _bash_login_startup_file(resolved_home)
+    if startup_file is None:
         return (
             "Bash login startup will not load any user file from `HOME` because `~/.bash_profile`, "
             "`~/.bash_login`, and `~/.profile` are all missing."
         )
 
+    startup_display = f"~/{startup_file.relative_to(resolved_home).as_posix()}"
+    try:
+        raw_startup_chain = _bash_login_startup_chain(resolved_home, startup_file, cwd=cwd)
+    except _ShellStartupReadError as exc:
+        return (
+            f"Bash login startup uses `{startup_display}`, but AgentFlow could not read `{exc.path}` "
+            f"while checking whether login shells reach `~/.bashrc`: {exc.detail}."
+        )
+
+    startup_chain = tuple(f"~/{path}" for path in raw_startup_chain)
     if startup_chain[-1] != "~/.bashrc":
-        shadowed_chain = _shadowed_bash_login_startup_chain(resolved_home, startup_chain[0][2:], cwd=cwd)
+        try:
+            shadowed_chain = _shadowed_bash_login_startup_chain(resolved_home, startup_file.name, cwd=cwd)
+        except _ShellStartupReadError as exc:
+            return (
+                f"Bash login startup uses `{startup_display}`, but AgentFlow could not read `{exc.path}` "
+                f"while checking whether login shells reach `~/.bashrc`: {exc.detail}."
+            )
         if shadowed_chain is not None:
             shadowed_paths = _format_bash_startup_paths(tuple(path for path in shadowed_chain[:-1]))
             pronoun = "it" if len(shadowed_chain) == 2 else "they"

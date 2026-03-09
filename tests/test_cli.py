@@ -636,6 +636,45 @@ nodes:
     ]
 
 
+def test_inspect_command_json_summary_warns_when_login_bash_startup_is_unreadable(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    login_file = home / ".bash_profile"
+    login_file.write_text('if [ -f "$HOME/.bashrc" ]; then . "$HOME/.bashrc"; fi\n', encoding="utf-8")
+    login_file.chmod(0)
+    monkeypatch.setattr("agentflow.local_shell.Path.home", lambda: home)
+
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        """name: inspect-unreadable-bash-startup
+working_dir: .
+nodes:
+  - id: review
+    agent: claude
+    provider: kimi
+    prompt: hi
+    target:
+      kind: local
+      bootstrap: kimi
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "super-secret")
+
+    result = runner.invoke(app, ["inspect", str(pipeline_path), "--output", "json-summary"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["nodes"][0]["bootstrap"] == (
+        "preset=kimi, shell=bash, login=true, startup=~/.bash_profile, interactive=true, "
+        "init=command -v kimi >/dev/null 2>&1 && kimi"
+    )
+    assert payload["nodes"][0]["warnings"] == [
+        "Bash login startup uses `~/.bash_profile`, but AgentFlow could not read `~/.bash_profile` while "
+        "checking whether login shells reach `~/.bashrc`: Permission denied."
+    ]
+
+
 def test_inspect_command_json_summary_warns_when_login_bash_reaches_missing_bashrc(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()

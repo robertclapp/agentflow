@@ -315,6 +315,24 @@ def test_target_bash_login_startup_warning_reports_missing_bashrc_bridge(
     )
 
 
+def test_target_bash_login_startup_warning_reports_unreadable_login_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    login_file = home / ".bash_profile"
+    login_file.write_text('if [ -f "$HOME/.bashrc" ]; then . "$HOME/.bashrc"; fi\n', encoding="utf-8")
+    login_file.chmod(0)
+    monkeypatch.setattr("agentflow.local_shell.Path.home", lambda: home)
+    target = {"kind": "local", "shell": "bash", "shell_login": True}
+
+    assert target_bash_login_startup_warning(target) == (
+        "Bash login startup uses `~/.bash_profile`, but AgentFlow could not read `~/.bash_profile` while "
+        "checking whether login shells reach `~/.bashrc`: Permission denied."
+    )
+
+
 def test_target_bash_login_startup_warning_reports_shadowed_profile_bridge(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -799,6 +817,27 @@ def test_target_bash_login_startup_chain_accepts_symlinked_login_file_outside_ho
     }
 
     assert target_bash_login_startup_chain(target) == ("~/.bash_profile", "~/.bashrc")
+
+
+def test_target_bash_login_startup_chain_falls_back_to_login_file_when_unreadable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    login_file = home / ".bash_profile"
+    login_file.write_text('if [ -f "$HOME/.bashrc" ]; then . "$HOME/.bashrc"; fi\n', encoding="utf-8")
+    login_file.chmod(0)
+
+    monkeypatch.setattr("agentflow.local_shell.Path.home", lambda: home)
+
+    target = {
+        "kind": "local",
+        "shell": "bash",
+        "shell_login": True,
+    }
+
+    assert target_bash_login_startup_chain(target) == ("~/.bash_profile",)
 
 
 def test_target_bash_login_startup_chain_uses_home_from_launch_env(
