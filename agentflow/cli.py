@@ -972,6 +972,14 @@ def _resolved_provider_api_key_env(node: object) -> tuple[str | None, str | None
     return None, None
 
 
+def _provider_credentials_defer_to_local_codex_auth(node: object, *, api_key_env: str) -> bool:
+    if api_key_env != "OPENAI_API_KEY":
+        return False
+    if _status_value(getattr(node, "agent", None)).lower() != AgentKind.CODEX.value:
+        return False
+    return _coerce_local_target(getattr(node, "target", None)) is not None
+
+
 def _format_timeout_seconds(value: float) -> str:
     if float(value).is_integer():
         return f"{int(value)}s"
@@ -1121,6 +1129,8 @@ def _pipeline_provider_credential_checks(pipeline: object) -> list[DoctorCheck]:
         agent = _status_value(getattr(node, "agent", None)).lower()
         api_key_env, provider_name = _resolved_provider_api_key_env(node)
         if not api_key_env:
+            continue
+        if _provider_credentials_defer_to_local_codex_auth(node, api_key_env=api_key_env):
             continue
 
         node_env = getattr(node, "env", None) or {}

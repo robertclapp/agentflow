@@ -3839,11 +3839,14 @@ def test_run_auto_preflight_stops_when_local_codex_auth_is_unavailable(monkeypat
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
     def fake_run(*args, **kwargs):
-        env = kwargs.get("env") or {}
-        target_command = env.get("AGENTFLOW_TARGET_COMMAND", "")
+        command = args[0]
+        if isinstance(command, list):
+            target_command = " ".join(str(part) for part in command)
+        else:
+            target_command = str(command)
         return subprocess.CompletedProcess(
-            args=args[0],
-            returncode=0 if target_command == "codex --version" else 1,
+            args=command,
+            returncode=1 if "subprocess.run" in target_command and "OPENAI_API_KEY" in target_command else 0,
             stdout="",
             stderr="",
         )
@@ -6114,7 +6117,7 @@ def test_doctor_with_pipeline_path_fails_when_local_codex_auth_is_unavailable(mo
         target_command = env.get("AGENTFLOW_TARGET_COMMAND", "")
         return subprocess.CompletedProcess(
             args=args[0],
-            returncode=0 if target_command == "codex --version" else 1,
+            returncode=1 if "subprocess.run" in target_command and "OPENAI_API_KEY" in target_command else 0,
             stdout="",
             stderr="",
         )
@@ -6200,6 +6203,95 @@ def test_doctor_with_pipeline_path_accepts_local_codex_login_status_from_shell_b
         "- codex_auth: ok - Node `codex_plan` (codex) can authenticate local Codex after the node shell bootstrap via `codex login status` or `OPENAI_API_KEY`.\n"
         "Pipeline auto preflight: enabled - local Codex/Claude/Kimi nodes use a `kimi` shell bootstrap.\n"
         "Pipeline auto preflight matches: codex_plan (codex) via `target.shell_init`\n"
+    )
+
+
+def test_doctor_with_pipeline_path_accepts_local_codex_login_for_explicit_openai_provider(monkeypatch):
+    captured: dict[str, object] = {}
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(subprocess, "run", _completed_subprocess())
+    fake_pipeline = SimpleNamespace(
+        nodes=[
+            SimpleNamespace(
+                id="codex_plan",
+                agent=SimpleNamespace(value="codex"),
+                provider="openai",
+                env={},
+                executable=None,
+                target=SimpleNamespace(
+                    kind="local",
+                    shell="bash",
+                    shell_login=False,
+                    shell_interactive=False,
+                    shell_init=None,
+                    cwd=None,
+                ),
+            )
+        ],
+        working_path=Path.cwd(),
+    )
+    monkeypatch.setattr(agentflow.cli, "_load_pipeline", _capture_pipeline_loader(captured, fake_pipeline))
+
+    result = runner.invoke(app, ["doctor", "explicit-openai.yaml", "--output", "summary"])
+
+    assert result.exit_code == 0
+    assert captured["loaded_path"] == "explicit-openai.yaml"
+    assert result.stdout == (
+        "Doctor: ok\n"
+        "Pipeline auto preflight: disabled - path does not match the bundled smoke pipeline and no local Codex/Claude/Kimi node uses `kimi` bootstrap.\n"
+    )
+
+
+def test_doctor_with_pipeline_path_uses_codex_auth_failure_for_explicit_openai_provider(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_run(*args, **kwargs):
+        command = args[0]
+        if isinstance(command, list):
+            target_command = " ".join(str(part) for part in command)
+        else:
+            target_command = str(command)
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=1 if "subprocess.run" in target_command and "OPENAI_API_KEY" in target_command else 0,
+            stdout="",
+            stderr="",
+        )
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    fake_pipeline = SimpleNamespace(
+        nodes=[
+            SimpleNamespace(
+                id="codex_plan",
+                agent=SimpleNamespace(value="codex"),
+                provider="openai",
+                env={},
+                executable=None,
+                target=SimpleNamespace(
+                    kind="local",
+                    shell="bash",
+                    shell_login=False,
+                    shell_interactive=False,
+                    shell_init=None,
+                    cwd=None,
+                ),
+            )
+        ],
+        working_path=Path.cwd(),
+    )
+    monkeypatch.setattr(agentflow.cli, "_load_pipeline", _capture_pipeline_loader(captured, fake_pipeline))
+
+    result = runner.invoke(app, ["doctor", "explicit-openai.yaml", "--output", "summary"])
+
+    assert result.exit_code == 1
+    assert captured["loaded_path"] == "explicit-openai.yaml"
+    assert "provider_credentials" not in result.stdout
+    assert result.stdout == (
+        "Doctor: failed\n"
+        "- codex_auth: failed - Node `codex_plan` (codex) cannot authenticate local Codex after the node shell bootstrap; `codex login status` fails and `OPENAI_API_KEY` is not set in the current environment, `node.env`, or `provider.env`.\n"
+        "Pipeline auto preflight: disabled - path does not match the bundled smoke pipeline and no local Codex/Claude/Kimi node uses `kimi` bootstrap.\n"
     )
 
 
