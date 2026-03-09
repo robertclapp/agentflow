@@ -132,6 +132,35 @@ def test_make_python_target_prints_repo_python_path() -> None:
     assert completed.stderr == ""
 
 
+def test_make_python_target_is_phony_even_when_python_file_exists(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    makefile = tmp_path / "Makefile"
+    makefile.write_text((repo_root / "Makefile").read_text(encoding="utf-8"), encoding="utf-8")
+    (tmp_path / "python").write_text("", encoding="utf-8")
+    expected = subprocess.run(
+        ["python3", "-c", "import sys; print(sys.executable)"],
+        capture_output=True,
+        cwd=tmp_path,
+        env=os.environ,
+        text=True,
+        timeout=5,
+        check=True,
+    )
+
+    completed = subprocess.run(
+        ["make", "-s", "python"],
+        capture_output=True,
+        cwd=tmp_path,
+        env=os.environ,
+        text=True,
+        timeout=5,
+    )
+
+    assert completed.returncode == 0
+    assert completed.stdout.strip() == expected.stdout.strip()
+    assert completed.stderr == ""
+
+
 def test_make_help_verify_local_mentions_bundled_run_local() -> None:
     repo_root = Path(__file__).resolve().parents[1]
 

@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help test inspect-local inspect-local-shell-init inspect-local-shell-wrapper doctor-local doctor-local-shell-init doctor-local-shell-wrapper smoke-local smoke-local-shell-init smoke-local-shell-wrapper run-local run-local-shell-init run-local-shell-wrapper check-local check-local-shell-init check-local-shell-wrapper toolchain-local doctor-local-custom doctor-local-custom-shell-init doctor-local-custom-shell-wrapper inspect-local-custom inspect-local-custom-shell-init inspect-local-custom-shell-wrapper check-local-custom check-local-custom-shell-init check-local-custom-shell-wrapper run-local-custom run-local-custom-shell-init run-local-custom-shell-wrapper verify-local
+.PHONY: help python test inspect-local inspect-local-shell-init inspect-local-shell-wrapper doctor-local doctor-local-shell-init doctor-local-shell-wrapper smoke-local smoke-local-shell-init smoke-local-shell-wrapper run-local run-local-shell-init run-local-shell-wrapper check-local check-local-shell-init check-local-shell-wrapper toolchain-local doctor-local-custom doctor-local-custom-shell-init doctor-local-custom-shell-wrapper inspect-local-custom inspect-local-custom-shell-init inspect-local-custom-shell-wrapper check-local-custom check-local-custom-shell-init check-local-custom-shell-wrapper run-local-custom run-local-custom-shell-init run-local-custom-shell-wrapper verify-local
 
 PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 
