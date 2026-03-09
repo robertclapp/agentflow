@@ -202,6 +202,22 @@ def test_kimi_shell_init_requires_interactive_bash_warning_accepts_bash_env_boot
     assert kimi_shell_init_requires_interactive_bash_warning(target) is None
 
 
+def test_shell_template_exported_env_var_value_before_command_ignores_bash_env_for_interactive_bash(
+    tmp_path: Path,
+):
+    shell_env = tmp_path / "shell.env"
+    shell_env.write_text("export ANTHROPIC_API_KEY=test-shell-key\n", encoding="utf-8")
+
+    assert (
+        shell_template_exported_env_var_value_before_command(
+            f"env HOME={tmp_path} BASH_ENV=$HOME/shell.env bash -ic '{{command}}'",
+            "ANTHROPIC_API_KEY",
+            home=tmp_path,
+        )
+        is None
+    )
+
+
 def test_kimi_shell_init_requires_interactive_bash_warning_uses_home_prefix_for_bash_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
