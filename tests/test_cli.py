@@ -453,6 +453,61 @@ nodes:
     ]
 
 
+def test_inspect_command_summary_warns_when_local_launch_inherits_current_base_url(tmp_path, monkeypatch):
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        """name: inspect-base-url-inheritance
+working_dir: .
+nodes:
+  - id: review
+    agent: claude
+    prompt: hi
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://open.bigmodel.cn/api/anthropic")
+
+    result = runner.invoke(app, ["inspect", str(pipeline_path), "--output", "json-summary"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["nodes"][0]["launch_env_inheritances"] == [
+        {
+            "key": "ANTHROPIC_BASE_URL",
+            "current_value": "https://open.bigmodel.cn/api/anthropic",
+            "source": "current environment",
+        }
+    ]
+    assert payload["nodes"][0]["warnings"] == [
+        "Launch inherits current `ANTHROPIC_BASE_URL` value `https://open.bigmodel.cn/api/anthropic`; configure `provider` or `node.env` explicitly if you want Claude routing pinned for this node."
+    ]
+
+
+def test_inspect_command_summary_skips_current_base_url_inheritance_for_container_targets(tmp_path, monkeypatch):
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        """name: inspect-base-url-inheritance-container
+working_dir: .
+nodes:
+  - id: review
+    agent: claude
+    prompt: hi
+    target:
+      kind: container
+      image: python:3.11-slim
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://open.bigmodel.cn/api/anthropic")
+
+    result = runner.invoke(app, ["inspect", str(pipeline_path), "--output", "json-summary"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert "launch_env_inheritances" not in payload["nodes"][0]
+    assert not payload["nodes"][0].get("warnings")
+
+
 def test_inspect_command_summary_redacts_sensitive_launch_env_override_details(tmp_path, monkeypatch):
     pipeline_path = tmp_path / "pipeline.yaml"
     pipeline_path.write_text(

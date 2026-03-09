@@ -446,6 +446,56 @@ def _launch_env_override_warnings(
     ]
 
 
+def _ambient_base_url_env_key(node: NodeSpec, resolved_provider: Any) -> str | None:
+    if getattr(node.target, "kind", "local") != "local":
+        return None
+    if node.agent == AgentKind.CODEX and resolved_provider is None:
+        return "OPENAI_BASE_URL"
+    if node.agent == AgentKind.CLAUDE and resolved_provider is None:
+        return "ANTHROPIC_BASE_URL"
+    return None
+
+
+def _format_launch_env_inheritance_detail(node: NodeSpec, detail: dict[str, Any]) -> str:
+    key = str(detail["key"])
+    current_value = str(detail["current_value"])
+    agent_name = node.agent.value.capitalize()
+    return (
+        f"Launch inherits current `{key}` value `{current_value}`; configure `provider` or `node.env` "
+        f"explicitly if you want {agent_name} routing pinned for this node."
+    )
+
+
+def _launch_env_inheritance_details(
+    node: NodeSpec,
+    resolved_provider: Any,
+    launch_env: dict[str, str],
+) -> list[dict[str, Any]]:
+    key = _ambient_base_url_env_key(node, resolved_provider)
+    if key is None:
+        return []
+
+    current_value = str(os.getenv(key, "") or "").strip()
+    if not current_value:
+        return []
+
+    if _has_nonempty_env_value(launch_env, key):
+        return []
+
+    return [{"key": key, "current_value": current_value, "source": "current environment"}]
+
+
+def _launch_env_inheritance_warnings(
+    node: NodeSpec,
+    resolved_provider: Any,
+    launch_env: dict[str, str],
+) -> list[str]:
+    return [
+        _format_launch_env_inheritance_detail(node, detail)
+        for detail in _launch_env_inheritance_details(node, resolved_provider, launch_env)
+    ]
+
+
 def _execution_mode_summary(node_plan: dict[str, Any]) -> str | None:
     parts: list[str] = []
 
@@ -548,10 +598,13 @@ def build_launch_inspection(
         launch_env_overrides = _launch_env_override_details(node, resolved_provider, prepared.env)
         if launch_env_overrides:
             node_plan["launch_env_overrides"] = launch_env_overrides
-        node_plan["warnings"] = _target_warnings(node_plan["target"]) + _launch_env_override_warnings(
-            node,
-            resolved_provider,
-            prepared.env,
+        launch_env_inheritances = _launch_env_inheritance_details(node, resolved_provider, prepared.env)
+        if launch_env_inheritances:
+            node_plan["launch_env_inheritances"] = launch_env_inheritances
+        node_plan["warnings"] = (
+            _target_warnings(node_plan["target"])
+            + _launch_env_override_warnings(node, resolved_provider, prepared.env)
+            + _launch_env_inheritance_warnings(node, resolved_provider, prepared.env)
         )
         node_plan["launch"]["payload_summary"] = _payload_summary(node_plan)
         inspected_nodes.append(node_plan)
@@ -657,6 +710,9 @@ def build_launch_inspection_summary(report: dict[str, Any]) -> dict[str, Any]:
         launch_env_overrides = node.get("launch_env_overrides")
         if launch_env_overrides:
             node_summary["launch_env_overrides"] = list(launch_env_overrides)
+        launch_env_inheritances = node.get("launch_env_inheritances")
+        if launch_env_inheritances:
+            node_summary["launch_env_inheritances"] = list(launch_env_inheritances)
         summary["nodes"].append(node_summary)
 
     return summary
