@@ -258,7 +258,7 @@ nodes:
     assert "- plan [codex/local]" in result.stdout
     assert "Model: gpt-5" in result.stdout
     assert "Mode: tools=read_only, capture=final" in result.stdout
-    assert "Bootstrap: shell=bash, login=true, startup=~/.profile, interactive=true, init=kimi" in result.stdout
+    assert "Bootstrap: shell=bash, login=true, startup=~/.profile -> ~/.bashrc, interactive=true, init=kimi" in result.stdout
     assert "Launch: bash -l -i -c 'kimi && eval \"$AGENTFLOW_TARGET_COMMAND\"'" in result.stdout
     assert "Runtime files: codex_home/config.toml" in result.stdout
     assert "Prompt: Review this: <inspect placeholder for nodes.plan.output>" in result.stdout
@@ -289,7 +289,7 @@ nodes:
 
     assert result.exit_code == 0
     assert (
-        "Bootstrap: shell=bash -lic 'kimi && {command}', login=true, startup=~/.profile, interactive=true"
+        "Bootstrap: shell=bash -lic 'kimi && {command}', login=true, startup=~/.profile -> ~/.bashrc, interactive=true"
         in result.stdout
     )
 
@@ -493,7 +493,7 @@ nodes:
             "capture": "final",
             "provider": "kimi, key=ANTHROPIC_API_KEY, url=https://api.kimi.com/coding/",
             "auth": "`ANTHROPIC_API_KEY` via `target.shell_init` (`kimi` helper)",
-            "bootstrap": "shell=bash, login=true, startup=~/.profile, interactive=true, init=kimi",
+            "bootstrap": "shell=bash, login=true, startup=~/.profile -> ~/.bashrc, interactive=true, init=kimi",
             "prompt_preview": "Reply with exactly: claude ok",
             "prepared_command": "claude -p 'Reply with exactly: claude ok' --output-format stream-json --verbose --permission-mode bypassPermissions --tools Read,Glob,Grep,LS,NotebookRead,Task,TaskOutput,TodoRead,WebFetch,WebSearch",
             "launch": "bash -l -i -c 'kimi && eval \"$AGENTFLOW_TARGET_COMMAND\"'",
@@ -578,7 +578,7 @@ nodes:
             "capture": "final",
             "provider": "kimi, key=ANTHROPIC_API_KEY, url=https://api.kimi.com/coding/",
             "auth": "`ANTHROPIC_API_KEY` via `target.bootstrap` (`kimi` helper)",
-            "bootstrap": "preset=kimi, shell=bash, login=true, startup=~/.profile, interactive=true, init=command -v kimi >/dev/null 2>&1 && kimi",
+            "bootstrap": "preset=kimi, shell=bash, login=true, startup=~/.profile -> ~/.bashrc, interactive=true, init=command -v kimi >/dev/null 2>&1 && kimi",
             "prompt_preview": "Reply with exactly: claude ok",
             "prepared_command": "claude -p 'Reply with exactly: claude ok' --output-format stream-json --verbose --permission-mode bypassPermissions --tools Read,Glob,Grep,LS,NotebookRead,Task,TaskOutput,TodoRead,WebFetch,WebSearch",
             "launch": "bash -l -i -c 'command -v kimi >/dev/null 2>&1 && kimi && eval \"$AGENTFLOW_TARGET_COMMAND\"'",
@@ -628,7 +628,7 @@ nodes:
             "capture": "final",
             "provider": "kimi, key=ANTHROPIC_API_KEY, url=https://api.kimi.com/coding/",
             "auth": "`ANTHROPIC_API_KEY` via `target.bootstrap` (`kimi` helper)",
-            "bootstrap": "preset=kimi, shell=bash, login=true, startup=~/.profile, interactive=true, init=export EXTRA_FLAG=1 && command -v kimi >/dev/null 2>&1 && kimi",
+            "bootstrap": "preset=kimi, shell=bash, login=true, startup=~/.profile -> ~/.bashrc, interactive=true, init=export EXTRA_FLAG=1 && command -v kimi >/dev/null 2>&1 && kimi",
             "prompt_preview": "hi",
             "prepared_command": "claude -p hi --output-format stream-json --verbose --permission-mode bypassPermissions --tools Read,Glob,Grep,LS,NotebookRead,Task,TaskOutput,TodoRead,WebFetch,WebSearch",
             "launch": "bash -l -i -c 'export EXTRA_FLAG=1 && command -v kimi >/dev/null 2>&1 && kimi && eval \"$AGENTFLOW_TARGET_COMMAND\"'",
@@ -846,7 +846,7 @@ nodes:
     assert summary_result.exit_code == 0
     summary_payload = json.loads(summary_result.stdout)
     assert summary_payload["nodes"][0]["bootstrap"] == (
-        "shell=bash, login=true, startup=~/.profile, interactive=true, init=export ANTHROPIC_API_KEY=<redacted> && kimi"
+        "shell=bash, login=true, startup=~/.profile -> ~/.bashrc, interactive=true, init=export ANTHROPIC_API_KEY=<redacted> && kimi"
     )
     assert summary_payload["nodes"][0]["auth"] == "`ANTHROPIC_API_KEY` via `target.shell_init`"
     assert summary_payload["nodes"][0]["launch"] == (
@@ -1265,7 +1265,7 @@ nodes:
     assert result.exit_code == 0
     assert "Auto preflight matches: review (claude) via `target.shell_init`" in result.stdout
     assert (
-        "Bootstrap: shell=bash, login=true, startup=~/.profile, interactive=true, "
+        "Bootstrap: shell=bash, login=true, startup=~/.profile -> ~/.bashrc, interactive=true, "
         "init=command -v kimi >/dev/null 2>&1 && kimi"
     ) in result.stdout
 

@@ -327,6 +327,12 @@ def _resolved_home_path(home: Path | None) -> Path:
     return (home or Path.home()).expanduser()
 
 
+def _home_relative_shell_path(home: Path, path: Path) -> str:
+    normalized_home = _resolved_home_path(home).resolve()
+    normalized_path = Path(os.path.normpath(str(path if path.is_absolute() else normalized_home / path)))
+    return normalized_path.relative_to(normalized_home).as_posix()
+
+
 def _shell_command_effective_home_for_target(command: str | None, target: str, *, home: Path | None = None) -> Path:
     resolved_home = _resolved_home_path(home)
     home_value = _shell_command_prefix_env_value_for_target(command, "HOME", target)
@@ -516,6 +522,44 @@ def _bash_login_startup_file(home: Path) -> Path | None:
         if candidate.exists():
             return candidate
     return None
+
+
+def _home_relative_shell_path(home: Path, path: Path) -> str:
+    normalized_home = home.resolve()
+    normalized_path = Path(os.path.normpath(str(path if path.is_absolute() else normalized_home / path)))
+    return normalized_path.relative_to(normalized_home).as_posix()
+
+
+def _bash_login_startup_chain(home: Path, startup_file: Path, *, seen: frozenset[str] = frozenset()) -> tuple[str, ...]:
+    resolved_home = _resolved_home_path(home)
+    resolved_startup = Path(os.path.normpath(str(startup_file.resolve(strict=False))))
+    name = _home_relative_shell_path(resolved_home, resolved_startup)
+    if name in seen:
+        return (name,)
+
+    text = _read_shell_file_text(resolved_startup)
+    if text is None:
+        return (name,)
+
+    bashrc_path = Path(os.path.normpath(str(resolved_home / ".bashrc")))
+    targets = tuple(
+        resolved
+        for token in _iter_shell_source_targets(text)
+        if (resolved := _resolve_home_shell_source_target(token, resolved_home)) is not None
+    )
+    if any(target == bashrc_path for target in targets):
+        return (name, ".bashrc")
+
+    next_seen = seen | {name}
+    for candidate in targets:
+        candidate_name = _home_relative_shell_path(resolved_home, candidate)
+        if candidate == bashrc_path or candidate_name in next_seen or not candidate.exists():
+            continue
+        chain = _bash_login_startup_chain(resolved_home, candidate, seen=next_seen)
+        if chain[-1] == ".bashrc":
+            return (name, *chain)
+
+    return (name,)
 
 
 def bash_login_shell_loads_function(function_name: str, *, home: Path | None = None) -> bool:
@@ -1037,6 +1081,18 @@ def target_bash_login_startup_file(target: Any, *, home: Path | None = None) -> 
         return None
 
     return f"~/{startup_file.relative_to(resolved_home).as_posix()}"
+
+
+def target_bash_login_startup_chain(target: Any, *, home: Path | None = None) -> tuple[str, ...] | None:
+    if not target_uses_login_bash(target):
+        return None
+
+    resolved_home = target_bash_home(target, home=home)
+    startup_file = _bash_login_startup_file(resolved_home)
+    if startup_file is None:
+        return None
+
+    return tuple(f"~/{path}" for path in _bash_login_startup_chain(resolved_home, startup_file))
 
 
 def shell_command_uses_kimi_helper(command: str | None) -> bool:
