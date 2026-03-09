@@ -5723,6 +5723,7 @@ def test_smoke_supports_json_summary_output(monkeypatch):
 
 def test_doctor_outputs_json_report(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+    _disable_local_readiness_probes(monkeypatch)
     monkeypatch.setattr(agentflow.cli, "build_local_smoke_doctor_report", lambda: _doctor_report())
 
     result = runner.invoke(app, ["doctor", "--output", "json"])
@@ -5736,6 +5737,7 @@ def test_doctor_outputs_json_report(monkeypatch):
 
 def test_doctor_outputs_json_summary_report(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+    _disable_local_readiness_probes(monkeypatch)
     monkeypatch.setattr(
         agentflow.cli,
         "build_local_smoke_doctor_report",
@@ -5778,6 +5780,7 @@ def test_doctor_outputs_json_summary_report(monkeypatch):
 
 def test_doctor_defaults_to_json_report(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+    _disable_local_readiness_probes(monkeypatch)
     monkeypatch.setattr(agentflow.cli, "build_local_smoke_doctor_report", lambda: _doctor_report())
     monkeypatch.setattr(agentflow.cli, "_stream_supports_tty_summary", lambda *, err: False)
 
@@ -5792,6 +5795,7 @@ def test_doctor_defaults_to_json_report(monkeypatch):
 
 def test_doctor_defaults_to_summary_report_on_tty(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+    _disable_local_readiness_probes(monkeypatch)
     monkeypatch.setattr(agentflow.cli, "build_local_smoke_doctor_report", lambda: _doctor_report())
     monkeypatch.setattr(agentflow.cli, "_stream_supports_tty_summary", lambda *, err: True)
 
@@ -5803,6 +5807,7 @@ def test_doctor_defaults_to_summary_report_on_tty(monkeypatch):
 
 def test_doctor_supports_summary_output(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+    _disable_local_readiness_probes(monkeypatch)
     monkeypatch.setattr(agentflow.cli, "build_local_smoke_doctor_report", lambda: _doctor_report())
 
     result = runner.invoke(app, ["doctor", "--output", "summary"])
@@ -8152,6 +8157,7 @@ nodes:
 
 def test_doctor_can_include_shell_bridge_in_json_output(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+    _disable_local_readiness_probes(monkeypatch)
     monkeypatch.setattr(agentflow.cli, "build_local_smoke_doctor_report", lambda: _doctor_report())
     monkeypatch.setattr(
         agentflow.cli,
@@ -8181,6 +8187,7 @@ def test_doctor_can_include_shell_bridge_in_json_output(monkeypatch):
 
 def test_doctor_can_include_shell_bridge_in_summary_output(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+    _disable_local_readiness_probes(monkeypatch)
     monkeypatch.setattr(agentflow.cli, "build_local_smoke_doctor_report", lambda: _doctor_report())
     monkeypatch.setattr(
         agentflow.cli,
@@ -8209,6 +8216,7 @@ def test_doctor_can_include_shell_bridge_in_summary_output(monkeypatch):
 
 def test_doctor_shell_bridge_summary_reports_when_no_fix_is_needed(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+    _disable_local_readiness_probes(monkeypatch)
     monkeypatch.setattr(agentflow.cli, "build_local_smoke_doctor_report", lambda: _doctor_report())
     monkeypatch.setattr(agentflow.cli, "build_bash_login_shell_bridge_recommendation", lambda: None)
 
