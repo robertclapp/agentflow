@@ -7,7 +7,7 @@ PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 help:
 	@printf '%s\n' \
 	  'Available targets:' \
-	  '  python        Prefer .venv/bin/python when available, else python3' \
+	  '  python        Print the Python interpreter used by repo shortcuts (.venv/bin/python when available, else python3)' \
 	  '  test          Run the Python test suite' \
 	  '  toolchain-local Run `agentflow toolchain-local --output summary` for the local bash/Kimi/Codex/Claude readiness check' \
 	  '  verify-local  Run the full local Codex + Claude-on-Kimi verification stack across bundled toolchain-local/inspect-local/doctor-local/check-local plus external custom doctor, inspect, check-local, and run paths (shared timeout via AGENTFLOW_LOCAL_VERIFY_TIMEOUT_SECONDS)' \
@@ -27,6 +27,9 @@ help:
 	  '  doctor-local  Check local Codex/Claude/Kimi smoke prerequisites' \
 	  '  smoke-local   Run the bundled local Codex + Claude-on-Kimi smoke test' \
 	  '  check-local   Run the single-pass doctor-then-smoke CLI shortcut with summary output'
+
+python:
+	@$(PYTHON) -c "import sys; print(sys.executable)"
 
 test:
 	$(PYTHON) -m pytest -q

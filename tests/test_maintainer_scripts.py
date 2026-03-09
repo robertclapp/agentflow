@@ -102,6 +102,23 @@ def test_verify_local_kimi_shell_script_reports_bash_profile_startup_when_presen
     assert completed.stderr == ""
 
 
+def test_make_python_target_prints_repo_python_path() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+
+    completed = subprocess.run(
+        ["make", "-s", "python"],
+        capture_output=True,
+        cwd=repo_root,
+        env=os.environ,
+        text=True,
+        timeout=5,
+    )
+
+    assert completed.returncode == 0
+    assert completed.stdout.strip() == _repo_python(repo_root)
+    assert completed.stderr == ""
+
+
 def test_verify_local_kimi_shell_script_requires_kimi_to_export_anthropic_env(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()
