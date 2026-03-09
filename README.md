@@ -382,6 +382,7 @@ make toolchain-local
 ```
 
 That command intentionally uses `bash -lic` before running `kimi`, `codex --version`, and `claude --version`, so it exercises the same login + interactive shell path that the bundled local smoke depends on. This avoids the easy-to-misread non-interactive `source ~/.bashrc` path where Bash often returns before the `kimi` helper is defined.
+It also now enforces the same Kimi-specific assumptions that the bundled smoke preflight depends on: `kimi` must export `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` must resolve to `https://api.kimi.com/coding/`, and Codex auth must already work via `codex login status` or `OPENAI_API_KEY`.
 
 From the repo root, `make inspect-local`, `make doctor-local`, `make smoke-local`, and `make check-local` wrap the same bundled Kimi-backed workflow and now prefer `.venv/bin/python` automatically when that repo-local virtualenv exists, falling back to `python3` otherwise. `make check-local` now delegates straight to `agentflow check-local`, which keeps the preflight and run in one pass instead of rerunning Doctor through `smoke-local`, while reusing the exact pipeline object that Doctor just validated. That CLI's stderr preflight report follows the requested run output style: summary for `--output summary`, JSON for `--output json`, and JSON for `--output json-summary`.
 
