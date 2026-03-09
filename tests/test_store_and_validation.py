@@ -255,6 +255,58 @@ def test_pipeline_validation_merges_extra_shell_init_into_kimi_bootstrap_shortha
     ]
 
 
+@pytest.mark.parametrize(
+    ("target_patch", "expected_message"),
+    [
+        (
+            {"bootstrap": "kimi", "shell": "sh"},
+            r"target\.bootstrap: kimi.*requires bash-style shell bootstrap.*target\.shell.*`sh`",
+        ),
+        (
+            {"bootstrap": "kimi", "shell": "bash", "shell_interactive": False},
+            r"target\.bootstrap: kimi.*requires interactive bash startup",
+        ),
+    ],
+)
+def test_pipeline_validation_rejects_incompatible_kimi_bootstrap_overrides(target_patch, expected_message):
+    with pytest.raises(ValueError, match=expected_message):
+        PipelineSpec.model_validate(
+            {
+                "name": "invalid-kimi-bootstrap-override",
+                "working_dir": ".",
+                "nodes": [
+                    {
+                        "id": "review",
+                        "agent": "claude",
+                        "prompt": "review",
+                        "target": {"kind": "local", **target_patch},
+                    },
+                ],
+            }
+        )
+
+
+def test_pipeline_validation_rejects_non_bash_shell_overriding_local_kimi_bootstrap_defaults():
+    with pytest.raises(ValueError, match=r"target\.bootstrap: kimi.*requires bash-style shell bootstrap.*`sh`"):
+        PipelineSpec.model_validate(
+            {
+                "name": "invalid-kimi-bootstrap-default-override",
+                "working_dir": ".",
+                "local_target_defaults": {
+                    "bootstrap": "kimi",
+                },
+                "nodes": [
+                    {
+                        "id": "review",
+                        "agent": "claude",
+                        "prompt": "review",
+                        "target": {"kind": "local", "shell": "sh"},
+                    },
+                ],
+            }
+        )
+
+
 def test_pipeline_validation_rejects_unknown_local_bootstrap():
     with pytest.raises(ValidationError, match=r"target\.bootstrap.*must be `kimi`"):
         PipelineSpec.model_validate(

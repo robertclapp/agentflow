@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import shlex
 from collections import Counter
 from datetime import datetime, timezone
 from enum import StrEnum
@@ -13,6 +15,8 @@ from agentflow.local_shell import (
     shell_init_commands,
     shell_init_uses_kimi_helper,
     shell_wrapper_requires_command_placeholder,
+    target_uses_bash,
+    target_uses_interactive_bash,
 )
 
 
@@ -111,6 +115,18 @@ def _normalized_provider_base_url(value: str | None) -> str | None:
     if not stripped:
         return None
     return stripped.rstrip("/")
+
+
+def _shell_program(shell: str | None) -> str | None:
+    if not isinstance(shell, str) or not shell.strip():
+        return None
+    try:
+        parts = shlex.split(shell)
+    except ValueError:
+        return None
+    if not parts:
+        return None
+    return os.path.basename(parts[0]) or None
 
 
 def _normalized_provider_env_text(provider: ProviderConfig, key: str) -> str | None:
@@ -308,18 +324,32 @@ class LocalTarget(BaseModel):
                 raise ValueError(f"`target.shell` uses an unsupported bash long option. {invalid_option_error}")
             if shell_wrapper_requires_command_placeholder(self.shell):
                 raise ValueError(self._SHELL_COMMAND_PLACEHOLDER_MESSAGE)
-            return self
+        else:
+            missing_shell_fields: list[str] = []
+            if self.shell_login:
+                missing_shell_fields.append("shell_login")
+            if self.shell_interactive:
+                missing_shell_fields.append("shell_interactive")
+            if self.shell_init:
+                missing_shell_fields.append("shell_init")
+            if missing_shell_fields:
+                joined = ", ".join(f"`target.{field}`" for field in missing_shell_fields)
+                raise ValueError(f"{joined} require `target.shell` on local targets")
 
-        missing_shell_fields: list[str] = []
-        if self.shell_login:
-            missing_shell_fields.append("shell_login")
-        if self.shell_interactive:
-            missing_shell_fields.append("shell_interactive")
-        if self.shell_init:
-            missing_shell_fields.append("shell_init")
-        if missing_shell_fields:
-            joined = ", ".join(f"`target.{field}`" for field in missing_shell_fields)
-            raise ValueError(f"{joined} require `target.shell` on local targets")
+        if self.bootstrap == "kimi":
+            target_shell = _shell_program(self.shell) or "this shell"
+            if not target_uses_bash(self):
+                raise ValueError(
+                    f"`target.bootstrap: kimi` requires bash-style shell bootstrap, but `target.shell` resolves "
+                    f"to `{target_shell}`. Use `shell: bash` with `target.shell_interactive: true`, use `bash -lic`, "
+                    "or drop `target.bootstrap` and configure the bootstrap explicitly."
+                )
+            if not target_uses_interactive_bash(self):
+                raise ValueError(
+                    "`target.bootstrap: kimi` requires interactive bash startup so helpers from `~/.bashrc` are "
+                    "available. Set `target.shell_interactive: true`, use `bash -lic`, or drop `target.bootstrap` "
+                    "and configure the bootstrap explicitly."
+                )
         return self
 
 
