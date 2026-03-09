@@ -920,6 +920,31 @@ def _shell_command_loads_kimi_from_bash_env(
     return _shell_file_exposes_command(path, "kimi", home=resolved_home, cwd=cwd, env=env)
 
 
+def _shell_command_loads_env_var_from_bash_env(
+    command: str | None,
+    env_var: str,
+    *,
+    home: Path | None = None,
+    cwd: Path | str | None = None,
+    env: dict[str, str] | None = None,
+) -> bool:
+    if not isinstance(command, str) or not command.strip() or not env_var:
+        return False
+
+    resolved_home = _shell_command_effective_home_for_target(command, "bash", home=home, cwd=cwd)
+    bash_env = _shell_command_prefix_env_value_for_target(command, "BASH_ENV", "bash")
+    if not bash_env:
+        return False
+
+    path = _resolve_shell_path(bash_env, home=resolved_home, cwd=cwd, env=env)
+    text = _read_shell_file_text(path)
+    if text is None:
+        return False
+    if _shell_text_returns_early_for_noninteractive_bash(text):
+        return False
+    return _shell_file_exports_env_var(path, env_var, home=resolved_home, cwd=cwd, env=env)
+
+
 def _shell_command_loads_function_from_sourced_file_before_target(
     command: str | None,
     function_name: str,
@@ -1251,6 +1276,9 @@ def shell_template_exports_env_var_before_command(
         return False
 
     if _shell_command_prefix_env_value(shell, env_var) is not None:
+        return True
+
+    if _shell_command_loads_env_var_from_bash_env(shell, env_var, home=home, cwd=cwd, env=env):
         return True
 
     if "{command}" not in shell:
