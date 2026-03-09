@@ -28,6 +28,27 @@ print(summarize_target_bash_login_startup(target) or "n/a")
 PY
 )"
 
+if [ -f "$HOME/.bash_profile" ]; then
+  bash_profile_status="present"
+else
+  bash_profile_status="missing"
+fi
+
+if [ -f "$HOME/.bash_login" ]; then
+  bash_login_status="present"
+else
+  bash_login_status="missing"
+fi
+
+if [ -f "$HOME/.profile" ]; then
+  profile_status="present"
+else
+  profile_status="missing"
+fi
+
+printf "~/.bash_profile: %s\n" "$bash_profile_status"
+printf "~/.bash_login: %s\n" "$bash_login_status"
+printf "~/.profile: %s\n" "$profile_status"
 printf "bash login startup: %s\n" "$bash_login_startup"
 
 EXPECTED_ANTHROPIC_BASE_URL="$expected_anthropic_base_url" bash -lic '
