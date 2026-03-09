@@ -3822,6 +3822,7 @@ def test_runs_defaults_to_first_twenty_records(monkeypatch):
             run_dir=lambda run_id: Path(runs_dir) / run_id,
         ),
     )
+    monkeypatch.setattr(agentflow.cli, "_stream_supports_tty_summary", lambda *, err: True)
 
     result = runner.invoke(app, ["runs"])
 
@@ -3843,6 +3844,7 @@ def test_runs_limit_zero_shows_all_records(monkeypatch):
             run_dir=lambda run_id: Path(runs_dir) / run_id,
         ),
     )
+    monkeypatch.setattr(agentflow.cli, "_stream_supports_tty_summary", lambda *, err: True)
 
     result = runner.invoke(app, ["runs", "--limit", "0"])
 
@@ -3881,6 +3883,25 @@ def test_runs_supports_json_summary_output(monkeypatch):
     ]
 
 
+def test_runs_defaults_to_json_when_stdout_is_not_a_tty(monkeypatch):
+    recent = _completed_run("run-list-json-auto", pipeline_name="json-pipeline")
+
+    monkeypatch.setattr(
+        agentflow.cli,
+        "_build_store",
+        lambda runs_dir: SimpleNamespace(
+            list_runs=lambda: [recent],
+            run_dir=lambda run_id: Path(runs_dir) / run_id,
+        ),
+    )
+    monkeypatch.setattr(agentflow.cli, "_stream_supports_tty_summary", lambda *, err: False)
+
+    result = runner.invoke(app, ["runs"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == [{"id": "run-list-json-auto", "status": "completed"}]
+
+
 def test_show_outputs_summary_for_persisted_run(monkeypatch):
     record = _completed_run("run-show", pipeline_name="show-pipeline")
 
@@ -3892,6 +3913,7 @@ def test_show_outputs_summary_for_persisted_run(monkeypatch):
             run_dir=lambda run_id: Path(runs_dir) / run_id,
         ),
     )
+    monkeypatch.setattr(agentflow.cli, "_stream_supports_tty_summary", lambda *, err: True)
 
     result = runner.invoke(app, ["show", "run-show"])
 
@@ -3899,6 +3921,25 @@ def test_show_outputs_summary_for_persisted_run(monkeypatch):
     assert "Run run-show: completed" in result.stdout
     assert "Pipeline: show-pipeline" in result.stdout
     assert "Run dir: .agentflow/runs/run-show" in result.stdout
+
+
+def test_show_defaults_to_json_when_stdout_is_not_a_tty(monkeypatch):
+    record = _completed_run("run-show-json", pipeline_name="show-pipeline")
+
+    monkeypatch.setattr(
+        agentflow.cli,
+        "_build_store",
+        lambda runs_dir: SimpleNamespace(
+            get_run=lambda run_id: record,
+            run_dir=lambda run_id: Path(runs_dir) / run_id,
+        ),
+    )
+    monkeypatch.setattr(agentflow.cli, "_stream_supports_tty_summary", lambda *, err: False)
+
+    result = runner.invoke(app, ["show", "run-show-json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == {"id": "run-show-json", "status": "completed"}
 
 
 def test_show_exits_for_missing_run(monkeypatch):
@@ -3933,6 +3974,7 @@ def test_cancel_outputs_summary_for_existing_run(monkeypatch):
             FakeOrchestrator(),
         ),
     )
+    monkeypatch.setattr(agentflow.cli, "_stream_supports_tty_summary", lambda *, err: True)
 
     result = runner.invoke(app, ["cancel", "run-cancel"])
 
@@ -3940,6 +3982,31 @@ def test_cancel_outputs_summary_for_existing_run(monkeypatch):
     assert captured["run_id"] == "run-cancel"
     assert "Run run-cancel: cancelling" in result.stdout
     assert "Pipeline: cancel-pipeline" in result.stdout
+
+
+def test_cancel_defaults_to_json_when_stdout_is_not_a_tty(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class FakeOrchestrator:
+        async def cancel(self, run_id: str):
+            captured["run_id"] = run_id
+            return _completed_run("run-cancel-json", pipeline_name="cancel-pipeline", status="cancelling")
+
+    monkeypatch.setattr(
+        agentflow.cli,
+        "_build_runtime",
+        lambda runs_dir, max_concurrent_runs: (
+            SimpleNamespace(run_dir=lambda run_id: Path(runs_dir) / run_id),
+            FakeOrchestrator(),
+        ),
+    )
+    monkeypatch.setattr(agentflow.cli, "_stream_supports_tty_summary", lambda *, err: False)
+
+    result = runner.invoke(app, ["cancel", "run-cancel-json"])
+
+    assert result.exit_code == 0
+    assert captured["run_id"] == "run-cancel-json"
+    assert json.loads(result.stdout) == {"id": "run-cancel-json", "status": "cancelling"}
 
 
 def test_cancel_exits_for_missing_run(monkeypatch):
@@ -4008,6 +4075,48 @@ def test_rerun_supports_json_summary_output(monkeypatch):
         "run_dir": ".agentflow/runs/run-rerun-new",
         "nodes": [],
     }
+
+
+def test_rerun_defaults_to_json_when_stdout_is_not_a_tty(monkeypatch):
+    captured: dict[str, object] = {}
+
+    queued_run = SimpleNamespace(
+        id="run-rerun-json",
+        status=SimpleNamespace(value="queued"),
+        pipeline=SimpleNamespace(name="rerun-pipeline", nodes=[]),
+        started_at=None,
+        finished_at=None,
+        nodes={},
+        model_dump=lambda mode="json": {"id": "run-rerun-json", "status": "queued"},
+    )
+
+    class FakeOrchestrator:
+        async def rerun(self, run_id: str):
+            captured["run_id"] = run_id
+            return queued_run
+
+        async def wait(self, run_id: str, timeout: float | None = None):
+            captured["wait_run_id"] = run_id
+            captured["wait_timeout"] = timeout
+            return _completed_run("run-rerun-json", pipeline_name="rerun-pipeline")
+
+    monkeypatch.setattr(
+        agentflow.cli,
+        "_build_runtime",
+        lambda runs_dir, max_concurrent_runs: (
+            SimpleNamespace(run_dir=lambda run_id: Path(runs_dir) / run_id),
+            FakeOrchestrator(),
+        ),
+    )
+    monkeypatch.setattr(agentflow.cli, "_stream_supports_tty_summary", lambda *, err: False)
+
+    result = runner.invoke(app, ["rerun", "run-old"])
+
+    assert result.exit_code == 0
+    assert captured["run_id"] == "run-old"
+    assert captured["wait_run_id"] == "run-rerun-json"
+    assert captured["wait_timeout"] is None
+    assert json.loads(result.stdout) == {"id": "run-rerun-json", "status": "completed"}
 
 
 def test_rerun_exits_for_missing_run(monkeypatch):
@@ -9043,6 +9152,49 @@ def test_doctor_shell_bridge_summary_reports_when_no_fix_is_needed(monkeypatch):
         "Pipeline auto preflight matches: codex_plan (codex) via `target.bootstrap`, claude_review (claude) via `target.bootstrap`\n"
         "Shell bridge suggestion: not needed\n"
     )
+
+
+def test_doctor_fails_when_launch_inspection_errors(monkeypatch):
+    _disable_local_readiness_probes(monkeypatch)
+    monkeypatch.setattr(agentflow.cli, "build_local_smoke_doctor_report", lambda: _doctor_report())
+    monkeypatch.setattr(agentflow.cli, "_load_pipeline", lambda path: _bundled_kimi_smoke_pipeline())
+    monkeypatch.setattr(
+        agentflow.inspection,
+        "build_launch_inspection",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+
+    result = runner.invoke(app, ["doctor", "--output", "json"])
+
+    assert result.exit_code == 1
+    assert json.loads(result.stdout) == {
+        "status": "failed",
+        "checks": [
+            {"name": "kimi_shell_helper", "status": "ok", "detail": "ready"},
+            {
+                "name": "launch_inspection",
+                "status": "failed",
+                "detail": (
+                    "AgentFlow could not inspect the resolved local launch plan for preflight safety checks: "
+                    "RuntimeError: boom."
+                ),
+            },
+        ],
+        "pipeline": {
+            "auto_preflight": {
+                "enabled": True,
+                "reason": "path matches the bundled real-agent smoke pipeline.",
+                "matches": [
+                    {"node_id": "codex_plan", "agent": "codex", "trigger": "target.bootstrap"},
+                    {"node_id": "claude_review", "agent": "claude", "trigger": "target.bootstrap"},
+                ],
+                "match_summary": [
+                    "codex_plan (codex) via `target.bootstrap`",
+                    "claude_review (claude) via `target.bootstrap`",
+                ],
+            }
+        },
+    }
 
 
 def test_doctor_with_pipeline_path_warns_for_custom_home_login_startup(tmp_path, monkeypatch):

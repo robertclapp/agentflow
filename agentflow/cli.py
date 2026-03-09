@@ -87,6 +87,7 @@ class SmokePreflightMode(StrEnum):
 
 
 _KIMI_SHELL_PREFLIGHT_AGENTS = {"codex", "claude", "kimi"}
+_PIPELINE_LAUNCH_INSPECTION_ERRORS: dict[int, str] = {}
 
 
 @dataclass(frozen=True)
@@ -490,14 +491,45 @@ def _pipeline_launch_inspection_nodes(pipeline: object) -> list[dict[str, object
             pipeline,
             runs_dir=str((Path.cwd() / ".agentflow" / "doctor").resolve()),
         )
-    except Exception:
+    except Exception as exc:
+        _PIPELINE_LAUNCH_INSPECTION_ERRORS[id(pipeline)] = _format_launch_inspection_error(exc)
         return []
+    _PIPELINE_LAUNCH_INSPECTION_ERRORS.pop(id(pipeline), None)
 
     nodes = report.get("nodes")
     if not isinstance(nodes, list):
         return []
 
     return [node for node in nodes if isinstance(node, dict)]
+
+
+def _format_launch_inspection_error(exc: Exception) -> str:
+    detail = str(exc).strip()
+    if detail:
+        return f"{type(exc).__name__}: {detail}"
+    return type(exc).__name__
+
+
+def _pipeline_launch_inspection_error(pipeline: object | None) -> str | None:
+    if pipeline is None:
+        return None
+    return _PIPELINE_LAUNCH_INSPECTION_ERRORS.get(id(pipeline))
+
+
+def _pipeline_launch_inspection_failure_checks(pipeline: object | None) -> list[DoctorCheck]:
+    detail = _pipeline_launch_inspection_error(pipeline)
+    if not detail:
+        return []
+    return [
+        DoctorCheck(
+            name="launch_inspection",
+            status="failed",
+            detail=(
+                "AgentFlow could not inspect the resolved local launch plan for preflight safety checks: "
+                f"{detail}."
+            ),
+        )
+    ]
 
 
 def _shell_bridge_recommendation_from_payload(payload: object) -> ShellBridgeRecommendation | None:
@@ -1339,6 +1371,9 @@ def _augment_preflight_report(
         return report
 
     inspection_nodes = _pipeline_launch_inspection_nodes(pipeline)
+    inspection_failure_checks = _pipeline_launch_inspection_failure_checks(pipeline)
+    if inspection_failure_checks:
+        return _extend_doctor_report(report, inspection_failure_checks)
     return _extend_doctor_report(
         report,
         [
@@ -1872,7 +1907,11 @@ def init(
 @app.command()
 def runs(
     runs_dir: str = typer.Option(".agentflow/runs", envvar="AGENTFLOW_RUNS_DIR"),
-    output: RunOutputFormat = typer.Option(RunOutputFormat.SUMMARY, "--output", help="Result output format."),
+    output: RunOutputFormat = typer.Option(
+        RunOutputFormat.AUTO,
+        "--output",
+        help="Result output format. Defaults to `summary` on a terminal and `json` otherwise.",
+    ),
     limit: int = typer.Option(20, min=0, help="Maximum runs to show. Use `0` to show all persisted runs."),
 ) -> None:
     store = _build_store(runs_dir)
@@ -1885,7 +1924,11 @@ def runs(
 def show(
     run_id: str,
     runs_dir: str = typer.Option(".agentflow/runs", envvar="AGENTFLOW_RUNS_DIR"),
-    output: RunOutputFormat = typer.Option(RunOutputFormat.SUMMARY, "--output", help="Result output format."),
+    output: RunOutputFormat = typer.Option(
+        RunOutputFormat.AUTO,
+        "--output",
+        help="Result output format. Defaults to `summary` on a terminal and `json` otherwise.",
+    ),
 ) -> None:
     store = _build_store(runs_dir)
     record = _get_run_or_exit(store, run_id, runs_dir=runs_dir)
@@ -1897,7 +1940,11 @@ def cancel(
     run_id: str,
     runs_dir: str = typer.Option(".agentflow/runs", envvar="AGENTFLOW_RUNS_DIR"),
     max_concurrent_runs: int = typer.Option(2, envvar="AGENTFLOW_MAX_CONCURRENT_RUNS"),
-    output: RunOutputFormat = typer.Option(RunOutputFormat.SUMMARY, "--output", help="Result output format."),
+    output: RunOutputFormat = typer.Option(
+        RunOutputFormat.AUTO,
+        "--output",
+        help="Result output format. Defaults to `summary` on a terminal and `json` otherwise.",
+    ),
 ) -> None:
     store, orchestrator = _build_runtime(runs_dir, max_concurrent_runs)
 
@@ -1917,7 +1964,11 @@ def rerun(
     run_id: str,
     runs_dir: str = typer.Option(".agentflow/runs", envvar="AGENTFLOW_RUNS_DIR"),
     max_concurrent_runs: int = typer.Option(2, envvar="AGENTFLOW_MAX_CONCURRENT_RUNS"),
-    output: RunOutputFormat = typer.Option(RunOutputFormat.SUMMARY, "--output", help="Result output format."),
+    output: RunOutputFormat = typer.Option(
+        RunOutputFormat.AUTO,
+        "--output",
+        help="Result output format. Defaults to `summary` on a terminal and `json` otherwise.",
+    ),
 ) -> None:
     store, orchestrator = _build_runtime(runs_dir, max_concurrent_runs)
 
