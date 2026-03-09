@@ -62,6 +62,7 @@ When that auto preflight is enabled because of a local Kimi bootstrap, the inspe
 Use `--output json-summary` when you want the same compact information in a machine-readable format without the full prepared env and payload details from `--output json`.
 For Kimi nodes, that inspect output also surfaces the effective default Moonshot provider even when you omit `provider:` from the pipeline, so the expected `KIMI_API_KEY` and base URL are visible before launch.
 When a node launch will override current shell values such as `ANTHROPIC_BASE_URL` or `OPENAI_API_KEY`, that JSON summary also includes a structured `launch_env_overrides` list per node, including the override source, so wrappers can react without scraping warning text. Base-URL values are included verbatim; secret-like keys stay redacted.
+That override summary also treats explicit empty-string base-URL values as intentional clears, so bundled smoke configs can show when they wipe an ambient relay such as `OPENAI_BASE_URL` before launch.
 For local Codex or Claude nodes that do not pin a provider or `node.env`, the same summary now also includes `launch_env_inheritances` when the launch will inherit an ambient `OPENAI_BASE_URL` or `ANTHROPIC_BASE_URL` from the current shell, so hidden routing drift is visible before you run the DAG.
 
 Run a pipeline once:
