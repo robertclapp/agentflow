@@ -52,6 +52,15 @@ _BASHRC_NONINTERACTIVE_GUARDS = (
 _EXPORT_STYLE_COMMANDS = {"declare", "typeset"}
 _BASH_LOGIN_FILENAMES = (".bash_profile", ".bash_login", ".profile")
 _DEFAULT_BASH_STARTUP_PROBE_TIMEOUT_SECONDS = 5.0
+_AGENTFLOW_BOOTSTRAP_ENV_VARS = (
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_BASE_URL",
+    "KIMI_API_KEY",
+    "KIMI_BASE_URL",
+)
+_AGENTFLOW_BOOTSTRAP_COMMANDS = ("codex", "claude", "kimi")
 
 
 class _ShellStartupReadError(RuntimeError):
@@ -1092,6 +1101,49 @@ def _shadowed_bash_login_startup_chain(
         if chain[-1] == ".bashrc":
             return chain
     return None
+
+
+def _bash_login_startup_has_direct_agentflow_bootstrap(
+    home: Path,
+    startup_file: Path,
+    *,
+    cwd: Path | str | None = None,
+    env: dict[str, str] | None = None,
+) -> bool:
+    resolved_home = _resolved_home_path(home)
+    normalized_startup = Path(
+        os.path.normpath(str(startup_file if startup_file.is_absolute() else resolved_home / startup_file))
+    )
+
+    for env_var in _AGENTFLOW_BOOTSTRAP_ENV_VARS:
+        if _shell_file_exports_env_var(
+            normalized_startup,
+            env_var,
+            home=resolved_home,
+            cwd=cwd,
+            env=env,
+        ):
+            return True
+
+    if _shell_file_loads_function(
+        normalized_startup,
+        "kimi",
+        home=resolved_home,
+        cwd=cwd,
+        env=env,
+    ):
+        return True
+
+    return any(
+        _shell_file_exposes_command(
+            normalized_startup,
+            command_name,
+            home=resolved_home,
+            cwd=cwd,
+            env=env,
+        )
+        for command_name in _AGENTFLOW_BOOTSTRAP_COMMANDS
+    )
 
 
 def _format_bash_startup_paths(paths: tuple[str, ...]) -> str:
@@ -2332,6 +2384,13 @@ def target_bash_login_startup_warning(
 
     startup_chain = tuple(f"~/{path}" for path in raw_startup_chain)
     if startup_chain[-1] != "~/.bashrc":
+        if _bash_login_startup_has_direct_agentflow_bootstrap(
+            resolved_home,
+            startup_file,
+            cwd=cwd,
+            env=env,
+        ):
+            return None
         try:
             shadowed_chain = _shadowed_bash_login_startup_chain(
                 resolved_home,

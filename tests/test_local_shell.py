@@ -522,6 +522,46 @@ def test_target_bash_login_startup_warning_reports_bash_login_shadowing_profile_
     )
 
 
+def test_target_bash_login_startup_warning_ignores_direct_profile_base_url_bootstrap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".profile").write_text(
+        "export ANTHROPIC_BASE_URL=https://api.kimi.com/coding/\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("agentflow.local_shell.Path.home", lambda: home)
+    target = {"kind": "local", "shell": "bash", "shell_login": True}
+
+    assert target_bash_login_startup_warning(target) is None
+
+
+def test_target_bash_login_startup_warning_ignores_profile_env_bridge_exports(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    auth_file = tmp_path / "anthropic.env"
+    auth_file.write_text("export ANTHROPIC_API_KEY=from-env-bridge\n", encoding="utf-8")
+    (home / ".profile").write_text(
+        'if [ -n "${AGENTFLOW_KIMI_ENV_FILE:-}" ]; then . "$AGENTFLOW_KIMI_ENV_FILE"; fi\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("agentflow.local_shell.Path.home", lambda: home)
+    target = {"kind": "local", "shell": "bash", "shell_login": True}
+
+    assert (
+        target_bash_login_startup_warning(
+            target,
+            env={"AGENTFLOW_KIMI_ENV_FILE": str(auth_file)},
+        )
+        is None
+    )
+
+
 def test_target_bash_login_startup_warning_reports_missing_bashrc_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
