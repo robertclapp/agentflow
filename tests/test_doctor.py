@@ -1123,6 +1123,55 @@ def test_local_smoke_doctor_report_accepts_relative_bashrc_bridge_from_home_cwd(
     assert build_bash_login_shell_bridge_recommendation(home, cwd=home) is None
 
 
+def test_local_smoke_doctor_report_accepts_direct_profile_base_url_bootstrap(tmp_path: Path):
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".profile").write_text(
+        "export ANTHROPIC_BASE_URL=https://api.kimi.com/coding/\n",
+        encoding="utf-8",
+    )
+
+    startup_check = _check_bash_login_startup(home)
+
+    assert startup_check.as_dict() == {
+        "name": "bash_login_startup",
+        "status": "ok",
+        "detail": (
+            "Bash login shells fall back to `~/.profile` because neither `~/.bash_profile` nor `~/.bash_login` "
+            "exists, and it provides AgentFlow bootstrap directly without `~/.bashrc`."
+        ),
+        "context": _startup_context("~/.profile", login_file="~/.profile"),
+    }
+    assert build_bash_login_shell_bridge_recommendation(home) is not None
+
+
+def test_local_smoke_doctor_report_accepts_profile_env_bridge_exports(tmp_path: Path):
+    home = tmp_path / "home"
+    home.mkdir()
+    auth_file = tmp_path / "anthropic.env"
+    auth_file.write_text("export ANTHROPIC_API_KEY=from-env-bridge\n", encoding="utf-8")
+    (home / ".profile").write_text(
+        'if [ -n "${AGENTFLOW_KIMI_ENV_FILE:-}" ]; then . "$AGENTFLOW_KIMI_ENV_FILE"; fi\n',
+        encoding="utf-8",
+    )
+
+    startup_check = _check_bash_login_startup(
+        home,
+        env={"AGENTFLOW_KIMI_ENV_FILE": str(auth_file)},
+    )
+
+    assert startup_check.as_dict() == {
+        "name": "bash_login_startup",
+        "status": "ok",
+        "detail": (
+            "Bash login shells fall back to `~/.profile` because neither `~/.bash_profile` nor `~/.bash_login` "
+            "exists, and it provides AgentFlow bootstrap directly without `~/.bashrc`."
+        ),
+        "context": _startup_context("~/.profile", login_file="~/.profile"),
+    }
+    assert build_bash_login_shell_bridge_recommendation(home) is not None
+
+
 def test_local_smoke_doctor_report_accepts_bash_login_bridge(tmp_path: Path):
     home = tmp_path / "home"
     home.mkdir()

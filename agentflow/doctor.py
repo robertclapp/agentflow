@@ -14,6 +14,7 @@ from typing import Any
 from agentflow.agents.kimi import default_kimi_executable
 from agentflow.env import merge_env_layers
 from agentflow.local_shell import (
+    _bash_login_startup_has_direct_agentflow_bootstrap,
     _resolve_shell_source_target,
     bash_login_startup_file_statuses,
     summarize_bash_login_startup_file_statuses,
@@ -1505,6 +1506,18 @@ def _check_bash_login_startup(
         )
     login_file_clause = _bash_login_file_clause(home, login_file)
     if chain is None:
+        if _bash_login_startup_has_direct_agentflow_bootstrap(
+            home,
+            login_file,
+            cwd=cwd,
+            env=env,
+        ):
+            return DoctorCheck(
+                name="bash_login_startup",
+                status="ok",
+                detail=f"{login_file_clause}, and it provides AgentFlow bootstrap directly without `~/.bashrc`.",
+                context=_bash_startup_chain_context(home, login_file, chain=(login_file.name,)),
+            )
         try:
             shadowed_chain = _shadowed_bash_startup_chain_to_bashrc(home, login_file.name, cwd=cwd, env=env)
         except _ShellStartupReadError as exc:
