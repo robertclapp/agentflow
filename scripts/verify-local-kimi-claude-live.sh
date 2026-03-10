@@ -6,6 +6,7 @@ repo_root="$(cd "$script_dir/.." && pwd)"
 . "$script_dir/custom-local-kimi-helpers.sh"
 
 python_bin="$(agentflow_repo_python "$repo_root")"
+expected_anthropic_base_url='https://api.kimi.com/coding/'
 tmpdir="$(mktemp -d)"
 stdout_path="$tmpdir/claude-live.stdout"
 stderr_path="$tmpdir/claude-live.stderr"
@@ -47,10 +48,24 @@ trap cleanup EXIT
 
 (
   cd "$repo_root"
-  agentflow_run_with_timeout "$python_bin" bash -lic '
+  agentflow_run_with_timeout "$python_bin" env EXPECTED_ANTHROPIC_BASE_URL="$expected_anthropic_base_url" bash -lic '
 set -euo pipefail
 command -v kimi >/dev/null 2>&1
+unset ANTHROPIC_API_KEY ANTHROPIC_BASE_URL
 kimi >/dev/null
+[ -n "${ANTHROPIC_API_KEY:-}" ] || {
+  echo "kimi did not export ANTHROPIC_API_KEY" >&2
+  exit 1
+}
+[ -n "${ANTHROPIC_BASE_URL:-}" ] || {
+  echo "kimi did not export ANTHROPIC_BASE_URL" >&2
+  exit 1
+}
+[ "${ANTHROPIC_BASE_URL%/}" = "${EXPECTED_ANTHROPIC_BASE_URL%/}" ] || {
+  printf "Unexpected ANTHROPIC_BASE_URL=%s\n" "$ANTHROPIC_BASE_URL" >&2
+  printf "Expected ANTHROPIC_BASE_URL=%s\n" "$EXPECTED_ANTHROPIC_BASE_URL" >&2
+  exit 1
+}
 claude -p "Reply with exactly: claude ok" \
   --output-format text \
   --permission-mode bypassPermissions \
