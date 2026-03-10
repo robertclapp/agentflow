@@ -103,6 +103,7 @@ kimi >/dev/null
   exit 1
 }
 printf "ANTHROPIC_BASE_URL=%s\n" "$ANTHROPIC_BASE_URL"
+unset OPENAI_BASE_URL
 codex_auth_sources=()
 if [ -n "${OPENAI_API_KEY:-}" ]; then
   codex_auth_sources+=("OPENAI_API_KEY")

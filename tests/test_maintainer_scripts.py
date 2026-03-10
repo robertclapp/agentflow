@@ -473,6 +473,45 @@ def test_verify_local_kimi_shell_script_requires_kimi_to_export_anthropic_env(tm
     assert "kimi did not export ANTHROPIC_API_KEY" in completed.stderr
 
 
+def test_verify_local_kimi_shell_script_ignores_ambient_openai_base_url_for_codex_auth(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    _write_fake_shell_home(
+        home,
+        kimi_body=(
+            "export ANTHROPIC_BASE_URL=https://api.kimi.com/coding/\n"
+            "export ANTHROPIC_API_KEY=test-kimi-key\n"
+        ),
+    )
+    _write_executable(
+        home / "bin" / "codex",
+        'if [ "${1:-}" = "login" ] && [ "${2:-}" = "status" ]; then\n'
+        '  if [ -n "${OPENAI_BASE_URL:-}" ]; then\n'
+        "    exit 0\n"
+        "  fi\n"
+        "  exit 1\n"
+        "fi\n"
+        'printf "codex-cli 0.0.0\\n"\n',
+    )
+
+    repo_root = Path(__file__).resolve().parents[1]
+    script_path = repo_root / "scripts" / "verify-local-kimi-shell.sh"
+
+    completed = _run_script(
+        script_path,
+        repo_root=repo_root,
+        home=home,
+        OPENAI_API_KEY="",
+        OPENAI_BASE_URL="https://relay.example/openai",
+    )
+
+    assert completed.returncode == 1
+    assert "~/.profile: present" in completed.stdout
+    assert "codex is not logged in and OPENAI_API_KEY is not exported" in completed.stderr
+
+
 def test_verify_local_kimi_shell_script_recommends_bridge_for_relative_profile_source_outside_home(
     tmp_path: Path,
 ) -> None:
