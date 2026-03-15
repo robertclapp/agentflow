@@ -6,13 +6,15 @@
 # the catalog does not have a meaningful `group_by` family.
 #
 # Usage:
+#   agentflow template-presets
 #   agentflow init fuzz-catalog-batched.yaml --template codex-fuzz-catalog-batched
+#   agentflow init fuzz-browser-catalog-batched-128.yaml --template codex-fuzz-catalog-batched --set preset=browser-surface --set shards=128 --set batch_size=16 --set concurrency=32
 #   agentflow init fuzz-catalog-batched-64.yaml --template codex-fuzz-catalog-batched --set shards=64 --set batch_size=8 --set concurrency=16
 #   agentflow inspect fuzz-catalog-batched.yaml --output summary
 #   agentflow run fuzz-catalog-batched.yaml --preflight never
 
 name: codex-fuzz-catalog-batched-128
-description: Configurable 128-shard Codex fuzz campaign backed by a CSV shard catalog with automatic 8-way batched reducers.
+description: Configurable 128-shard Codex fuzz campaign backed by a CSV shard catalog generated from the `oss-fuzz-core` preset with automatic 8-way batched reducers.
 working_dir: ./codex_fuzz_catalog_batched_128
 concurrency: 32
 

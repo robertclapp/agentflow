@@ -25,6 +25,14 @@ class BundledTemplate:
 
 
 @dataclass(frozen=True)
+class BundledFuzzCampaignPreset:
+    name: str
+    description: str
+    families: tuple[Mapping[str, str], ...]
+    strategies: tuple[Mapping[str, str], ...]
+
+
+@dataclass(frozen=True)
 class RenderedBundledTemplateFile:
     relative_path: str
     content: str
@@ -51,24 +59,68 @@ _DEFAULT_FUZZ_HIERARCHICAL_BUCKET_COUNT = 4
 _DEFAULT_FUZZ_HIERARCHICAL_CONCURRENCY = 16
 _DEFAULT_FUZZ_CATALOG_SHARDS = 128
 _DEFAULT_FUZZ_CATALOG_CONCURRENCY = 32
+_DEFAULT_FUZZ_CAMPAIGN_PRESET = "oss-fuzz-core"
 _FUZZ_MATRIX_MANIFEST_SUPPORT_FILE = "manifests/codex-fuzz-matrix.axes.yaml"
 _FUZZ_HIERARCHICAL_GROUPED_AXES_SUPPORT_FILE = "manifests/codex-fuzz-hierarchical-grouped.axes.yaml"
 _FUZZ_HIERARCHICAL_AXES_SUPPORT_FILE = "manifests/codex-fuzz-hierarchical.axes.yaml"
 _FUZZ_HIERARCHICAL_FAMILIES_SUPPORT_FILE = "manifests/codex-fuzz-hierarchical.families.yaml"
 _FUZZ_CATALOG_SUPPORT_FILE = "manifests/codex-fuzz-catalog.csv"
 _FUZZ_CATALOG_GROUPED_SUPPORT_FILE = "manifests/codex-fuzz-catalog-grouped.csv"
-_FUZZ_CATALOG_FAMILIES = (
+_DEFAULT_FUZZ_CAMPAIGN_FAMILIES = (
     {"target": "libpng", "corpus": "png"},
     {"target": "libjpeg", "corpus": "jpeg"},
     {"target": "freetype", "corpus": "fonts"},
     {"target": "sqlite", "corpus": "sql"},
 )
-_FUZZ_CATALOG_STRATEGIES = (
+_DEFAULT_FUZZ_CAMPAIGN_STRATEGIES = (
     {"sanitizer": "asan", "focus": "parser"},
     {"sanitizer": "asan", "focus": "structure-aware"},
     {"sanitizer": "ubsan", "focus": "differential"},
     {"sanitizer": "ubsan", "focus": "stateful"},
 )
+_FUZZ_CAMPAIGN_PRESETS = (
+    BundledFuzzCampaignPreset(
+        name=_DEFAULT_FUZZ_CAMPAIGN_PRESET,
+        description="Balanced native parser campaign across media, fonts, and storage surfaces.",
+        families=_DEFAULT_FUZZ_CAMPAIGN_FAMILIES,
+        strategies=_DEFAULT_FUZZ_CAMPAIGN_STRATEGIES,
+    ),
+    BundledFuzzCampaignPreset(
+        name="browser-surface",
+        description="Browser-adjacent HTML, JS, font, and image surfaces for renderer-oriented campaigns.",
+        families=(
+            {"target": "blink", "corpus": "html"},
+            {"target": "v8", "corpus": "js"},
+            {"target": "woff2", "corpus": "fonts"},
+            {"target": "libwebp", "corpus": "webp"},
+        ),
+        strategies=_DEFAULT_FUZZ_CAMPAIGN_STRATEGIES,
+    ),
+    BundledFuzzCampaignPreset(
+        name="protocol-stack",
+        description="Protocol and transport libraries across DNS, HTTP/2, QUIC, and TLS inputs.",
+        families=(
+            {"target": "c-ares", "corpus": "dns"},
+            {"target": "nghttp2", "corpus": "http2"},
+            {"target": "quiche", "corpus": "quic"},
+            {"target": "openssl", "corpus": "tls"},
+        ),
+        strategies=_DEFAULT_FUZZ_CAMPAIGN_STRATEGIES,
+    ),
+)
+_FUZZ_CAMPAIGN_PRESETS_BY_NAME = {preset.name: preset for preset in _FUZZ_CAMPAIGN_PRESETS}
+
+
+def bundled_fuzz_campaign_presets() -> tuple[BundledFuzzCampaignPreset, ...]:
+    return _FUZZ_CAMPAIGN_PRESETS
+
+
+def bundled_fuzz_campaign_preset_names() -> tuple[str, ...]:
+    return tuple(preset.name for preset in bundled_fuzz_campaign_presets())
+
+
+def default_fuzz_campaign_preset_name() -> str:
+    return _DEFAULT_FUZZ_CAMPAIGN_PRESET
 
 
 def _parse_positive_template_int(template_name: str, field_name: str, raw_value: str) -> int:
@@ -98,18 +150,37 @@ def _validate_template_settings(template_name: str, raw_values: Mapping[str, str
         )
 
 
+def _resolve_fuzz_campaign_preset(
+    template_name: str,
+    raw_values: Mapping[str, str],
+) -> BundledFuzzCampaignPreset:
+    preset_name = _template_string_value(
+        template_name,
+        "preset",
+        raw_values.get("preset"),
+        default=_DEFAULT_FUZZ_CAMPAIGN_PRESET,
+    )
+    try:
+        return _FUZZ_CAMPAIGN_PRESETS_BY_NAME[preset_name]
+    except KeyError as exc:
+        available = ", ".join(f"`{preset.name}`" for preset in _FUZZ_CAMPAIGN_PRESETS)
+        raise ValueError(
+            f"template `{template_name}` expects `preset` to be one of {available}, got `{preset_name}`"
+        ) from exc
+
+
 def _fanout_suffix(index: int, count: int) -> str:
     width = max(1, len(str(count - 1)))
     return f"{index:0{width}d}"
 
 
-def _fuzz_matrix_manifest_total_shards(bucket_count: int) -> int:
-    return len(_FUZZ_CATALOG_FAMILIES) * len(_FUZZ_CATALOG_STRATEGIES) * bucket_count
+def _fuzz_campaign_total_shards(bucket_count: int, *, preset: BundledFuzzCampaignPreset) -> int:
+    return len(preset.families) * len(preset.strategies) * bucket_count
 
 
-def _render_codex_fuzz_matrix_manifest_axes(bucket_count: int) -> str:
+def _render_codex_fuzz_matrix_manifest_axes(bucket_count: int, *, preset: BundledFuzzCampaignPreset) -> str:
     lines: list[str] = ["family:"]
-    for family in _FUZZ_CATALOG_FAMILIES:
+    for family in preset.families:
         lines.extend(
             (
                 f"  - target: {family['target']}",
@@ -118,7 +189,7 @@ def _render_codex_fuzz_matrix_manifest_axes(bucket_count: int) -> str:
         )
 
     lines.append("strategy:")
-    for strategy in _FUZZ_CATALOG_STRATEGIES:
+    for strategy in preset.strategies:
         lines.extend(
             (
                 f"  - sanitizer: {strategy['sanitizer']}",
@@ -137,9 +208,9 @@ def _render_codex_fuzz_matrix_manifest_axes(bucket_count: int) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _render_codex_fuzz_family_values() -> str:
+def _render_codex_fuzz_family_values(*, preset: BundledFuzzCampaignPreset) -> str:
     lines: list[str] = []
-    for family in _FUZZ_CATALOG_FAMILIES:
+    for family in preset.families:
         lines.extend(
             (
                 f"- target: {family['target']}",
@@ -152,9 +223,10 @@ def _render_codex_fuzz_family_values() -> str:
 def _render_codex_fuzz_hierarchical_grouped_template(values: Mapping[str, str] | None = None) -> RenderedBundledTemplate:
     template_name = "codex-fuzz-hierarchical-grouped"
     raw_values = dict(values or {})
-    allowed = {"bucket_count", "concurrency", "name", "working_dir"}
+    allowed = {"preset", "bucket_count", "concurrency", "name", "working_dir"}
     _validate_template_settings(template_name, raw_values, allowed=allowed)
 
+    preset = _resolve_fuzz_campaign_preset(template_name, raw_values)
     bucket_count = _parse_positive_template_int(
         template_name,
         "bucket_count",
@@ -165,7 +237,7 @@ def _render_codex_fuzz_hierarchical_grouped_template(values: Mapping[str, str] |
         "concurrency",
         raw_values.get("concurrency", str(_DEFAULT_FUZZ_HIERARCHICAL_CONCURRENCY)),
     )
-    total_shards = _fuzz_matrix_manifest_total_shards(bucket_count)
+    total_shards = _fuzz_campaign_total_shards(bucket_count, preset=preset)
     name = _template_string_value(
         template_name,
         "name",
@@ -188,13 +260,15 @@ def _render_codex_fuzz_hierarchical_grouped_template(values: Mapping[str, str] |
 # family manifest in sync.
 #
 # Usage:
+#   agentflow template-presets
 #   agentflow init fuzz-hierarchical-grouped.yaml --template codex-fuzz-hierarchical-grouped
+#   agentflow init fuzz-browser-grouped-128.yaml --template codex-fuzz-hierarchical-grouped --set preset=browser-surface --set bucket_count=8 --set concurrency=32
 #   agentflow init fuzz-hierarchical-grouped-128.yaml --template codex-fuzz-hierarchical-grouped --set bucket_count=8 --set concurrency=32
 #   agentflow inspect fuzz-hierarchical-grouped.yaml --output summary
 #   agentflow run fuzz-hierarchical-grouped.yaml --preflight never
 
 name: $name
-description: Configurable hierarchical $total_shards-shard Codex fuzz matrix that derives per-target reducers from `fanout.group_by`.
+description: Configurable hierarchical $total_shards-shard Codex fuzz matrix generated from the `$preset` preset and grouped reducers derived via `fanout.group_by`.
 working_dir: $working_dir
 concurrency: $concurrency
 
@@ -335,6 +409,7 @@ nodes:
 """
     ).substitute(
         name=name,
+        preset=preset.name,
         total_shards=total_shards,
         working_dir=working_dir,
         concurrency=concurrency,
@@ -345,7 +420,7 @@ nodes:
         support_files=(
             RenderedBundledTemplateFile(
                 relative_path=_FUZZ_HIERARCHICAL_GROUPED_AXES_SUPPORT_FILE,
-                content=_render_codex_fuzz_matrix_manifest_axes(bucket_count),
+                content=_render_codex_fuzz_matrix_manifest_axes(bucket_count, preset=preset),
             ),
         ),
     )
@@ -354,9 +429,10 @@ nodes:
 def _render_codex_fuzz_matrix_manifest_template(values: Mapping[str, str] | None = None) -> RenderedBundledTemplate:
     template_name = "codex-fuzz-matrix-manifest"
     raw_values = dict(values or {})
-    allowed = {"bucket_count", "concurrency", "name", "working_dir"}
+    allowed = {"preset", "bucket_count", "concurrency", "name", "working_dir"}
     _validate_template_settings(template_name, raw_values, allowed=allowed)
 
+    preset = _resolve_fuzz_campaign_preset(template_name, raw_values)
     bucket_count = _parse_positive_template_int(
         template_name,
         "bucket_count",
@@ -367,7 +443,7 @@ def _render_codex_fuzz_matrix_manifest_template(values: Mapping[str, str] | None
         "concurrency",
         raw_values.get("concurrency", str(_DEFAULT_FUZZ_MATRIX_MANIFEST_CONCURRENCY)),
     )
-    total_shards = _fuzz_matrix_manifest_total_shards(bucket_count)
+    total_shards = _fuzz_campaign_total_shards(bucket_count, preset=preset)
     name = _template_string_value(
         template_name,
         "name",
@@ -389,13 +465,15 @@ def _render_codex_fuzz_matrix_manifest_template(values: Mapping[str, str] | None
 # without hand-editing both files from scratch.
 #
 # Usage:
+#   agentflow template-presets
 #   agentflow init fuzz-matrix-manifest.yaml --template codex-fuzz-matrix-manifest
+#   agentflow init fuzz-browser-128.yaml --template codex-fuzz-matrix-manifest --set preset=browser-surface --set bucket_count=8 --set concurrency=32
 #   agentflow init fuzz-matrix-manifest-128.yaml --template codex-fuzz-matrix-manifest --set bucket_count=8 --set concurrency=32
 #   agentflow inspect fuzz-matrix-manifest.yaml --output summary
 #   agentflow run fuzz-matrix-manifest.yaml --preflight never
 
 name: $name
-description: Configurable $total_shards-shard Codex fuzz matrix backed by a manifest sidecar with reusable axes, derived labels, and per-shard workdirs.
+description: Configurable $total_shards-shard Codex fuzz matrix backed by a manifest sidecar generated from the `$preset` preset with reusable axes, derived labels, and per-shard workdirs.
 working_dir: $working_dir
 concurrency: $concurrency
 
@@ -480,6 +558,7 @@ nodes:
 """
     ).substitute(
         name=name,
+        preset=preset.name,
         total_shards=total_shards,
         working_dir=working_dir,
         concurrency=concurrency,
@@ -490,7 +569,7 @@ nodes:
         support_files=(
             RenderedBundledTemplateFile(
                 relative_path=_FUZZ_MATRIX_MANIFEST_SUPPORT_FILE,
-                content=_render_codex_fuzz_matrix_manifest_axes(bucket_count),
+                content=_render_codex_fuzz_matrix_manifest_axes(bucket_count, preset=preset),
             ),
         ),
     )
@@ -499,9 +578,10 @@ nodes:
 def _render_codex_fuzz_hierarchical_template(values: Mapping[str, str] | None = None) -> RenderedBundledTemplate:
     template_name = "codex-fuzz-hierarchical-manifest"
     raw_values = dict(values or {})
-    allowed = {"bucket_count", "concurrency", "name", "working_dir"}
+    allowed = {"preset", "bucket_count", "concurrency", "name", "working_dir"}
     _validate_template_settings(template_name, raw_values, allowed=allowed)
 
+    preset = _resolve_fuzz_campaign_preset(template_name, raw_values)
     bucket_count = _parse_positive_template_int(
         template_name,
         "bucket_count",
@@ -512,7 +592,7 @@ def _render_codex_fuzz_hierarchical_template(values: Mapping[str, str] | None = 
         "concurrency",
         raw_values.get("concurrency", str(_DEFAULT_FUZZ_HIERARCHICAL_CONCURRENCY)),
     )
-    total_shards = _fuzz_matrix_manifest_total_shards(bucket_count)
+    total_shards = _fuzz_campaign_total_shards(bucket_count, preset=preset)
     name = _template_string_value(
         template_name,
         "name",
@@ -534,13 +614,15 @@ def _render_codex_fuzz_hierarchical_template(values: Mapping[str, str] | None = 
 # hand-editing both the fuzzer matrix and the family reducers.
 #
 # Usage:
+#   agentflow template-presets
 #   agentflow init fuzz-hierarchical.yaml --template codex-fuzz-hierarchical-manifest
+#   agentflow init fuzz-browser-hierarchical-128.yaml --template codex-fuzz-hierarchical-manifest --set preset=browser-surface --set bucket_count=8 --set concurrency=32
 #   agentflow init fuzz-hierarchical-128.yaml --template codex-fuzz-hierarchical-manifest --set bucket_count=8 --set concurrency=32
 #   agentflow inspect fuzz-hierarchical.yaml --output summary
 #   agentflow run fuzz-hierarchical.yaml --preflight never
 
 name: $name
-description: Configurable hierarchical $total_shards-shard Codex fuzz matrix backed by manifests for reusable axes and family reducers.
+description: Configurable hierarchical $total_shards-shard Codex fuzz matrix backed by manifests for the `$preset` preset's reusable axes and family reducers.
 working_dir: $working_dir
 concurrency: $concurrency
 
@@ -679,6 +761,7 @@ nodes:
 """
     ).substitute(
         name=name,
+        preset=preset.name,
         total_shards=total_shards,
         working_dir=working_dir,
         concurrency=concurrency,
@@ -690,11 +773,11 @@ nodes:
         support_files=(
             RenderedBundledTemplateFile(
                 relative_path=_FUZZ_HIERARCHICAL_AXES_SUPPORT_FILE,
-                content=_render_codex_fuzz_matrix_manifest_axes(bucket_count),
+                content=_render_codex_fuzz_matrix_manifest_axes(bucket_count, preset=preset),
             ),
             RenderedBundledTemplateFile(
                 relative_path=_FUZZ_HIERARCHICAL_FAMILIES_SUPPORT_FILE,
-                content=_render_codex_fuzz_family_values(),
+                content=_render_codex_fuzz_family_values(preset=preset),
             ),
         ),
     )
@@ -1202,8 +1285,8 @@ nodes:
     return RenderedBundledTemplate(yaml=rendered_yaml)
 
 
-def _render_codex_fuzz_catalog_rows(shards: int) -> list[dict[str, str]]:
-    combinations = [(family, strategy) for family in _FUZZ_CATALOG_FAMILIES for strategy in _FUZZ_CATALOG_STRATEGIES]
+def _render_codex_fuzz_catalog_rows(shards: int, *, preset: BundledFuzzCampaignPreset) -> list[dict[str, str]]:
+    combinations = [(family, strategy) for family in preset.families for strategy in preset.strategies]
     rendered_rows: list[dict[str, str]] = []
     for index in range(shards):
         family, strategy = combinations[index % len(combinations)]
@@ -1225,8 +1308,8 @@ def _render_codex_fuzz_catalog_rows(shards: int) -> list[dict[str, str]]:
     return rendered_rows
 
 
-def _render_codex_fuzz_catalog_csv(shards: int) -> str:
-    rows = _render_codex_fuzz_catalog_rows(shards)
+def _render_codex_fuzz_catalog_csv(shards: int, *, preset: BundledFuzzCampaignPreset) -> str:
+    rows = _render_codex_fuzz_catalog_rows(shards, preset=preset)
     buffer = StringIO()
     fieldnames = ("label", "target", "corpus", "sanitizer", "focus", "bucket", "seed", "workspace")
     writer = csv.DictWriter(buffer, fieldnames=fieldnames, lineterminator="\n")
@@ -1238,9 +1321,10 @@ def _render_codex_fuzz_catalog_csv(shards: int) -> str:
 def _render_codex_fuzz_catalog_template(values: Mapping[str, str] | None = None) -> RenderedBundledTemplate:
     template_name = "codex-fuzz-catalog"
     raw_values = dict(values or {})
-    allowed = {"shards", "concurrency", "name", "working_dir"}
+    allowed = {"preset", "shards", "concurrency", "name", "working_dir"}
     _validate_template_settings(template_name, raw_values, allowed=allowed)
 
+    preset = _resolve_fuzz_campaign_preset(template_name, raw_values)
     shards = _parse_positive_template_int(
         template_name,
         "shards",
@@ -1271,13 +1355,15 @@ def _render_codex_fuzz_catalog_template(values: Mapping[str, str] | None = None)
 # large campaigns in a spreadsheet without rewriting the reducer or launch settings.
 #
 # Usage:
+#   agentflow template-presets
 #   agentflow init fuzz-catalog.yaml --template codex-fuzz-catalog
+#   agentflow init fuzz-browser-catalog-128.yaml --template codex-fuzz-catalog --set preset=browser-surface --set shards=128 --set concurrency=32
 #   agentflow init fuzz-catalog-48.yaml --template codex-fuzz-catalog --set shards=48 --set concurrency=12
 #   agentflow inspect fuzz-catalog.yaml --output summary
 #   agentflow run fuzz-catalog.yaml --preflight never
 
 name: $name
-description: Configurable $shards-shard Codex fuzz campaign backed by a CSV shard catalog for maintainer-friendly retargeting.
+description: Configurable $shards-shard Codex fuzz campaign backed by a CSV shard catalog generated from the `$preset` preset for maintainer-friendly retargeting.
 working_dir: $working_dir
 concurrency: $concurrency
 
@@ -1359,6 +1445,7 @@ nodes:
 """
     ).substitute(
         name=name,
+        preset=preset.name,
         shards=shards,
         working_dir=working_dir,
         concurrency=concurrency,
@@ -1369,7 +1456,7 @@ nodes:
         support_files=(
             RenderedBundledTemplateFile(
                 relative_path=_FUZZ_CATALOG_SUPPORT_FILE,
-                content=_render_codex_fuzz_catalog_csv(shards),
+                content=_render_codex_fuzz_catalog_csv(shards, preset=preset),
             ),
         ),
     )
@@ -1378,9 +1465,10 @@ nodes:
 def _render_codex_fuzz_catalog_batched_template(values: Mapping[str, str] | None = None) -> RenderedBundledTemplate:
     template_name = "codex-fuzz-catalog-batched"
     raw_values = dict(values or {})
-    allowed = {"shards", "batch_size", "concurrency", "name", "working_dir"}
+    allowed = {"preset", "shards", "batch_size", "concurrency", "name", "working_dir"}
     _validate_template_settings(template_name, raw_values, allowed=allowed)
 
+    preset = _resolve_fuzz_campaign_preset(template_name, raw_values)
     shards = _parse_positive_template_int(
         template_name,
         "shards",
@@ -1419,13 +1507,15 @@ def _render_codex_fuzz_catalog_batched_template(values: Mapping[str, str] | None
 # the catalog does not have a meaningful `group_by` family.
 #
 # Usage:
+#   agentflow template-presets
 #   agentflow init fuzz-catalog-batched.yaml --template codex-fuzz-catalog-batched
+#   agentflow init fuzz-browser-catalog-batched-128.yaml --template codex-fuzz-catalog-batched --set preset=browser-surface --set shards=128 --set batch_size=16 --set concurrency=32
 #   agentflow init fuzz-catalog-batched-64.yaml --template codex-fuzz-catalog-batched --set shards=64 --set batch_size=8 --set concurrency=16
 #   agentflow inspect fuzz-catalog-batched.yaml --output summary
 #   agentflow run fuzz-catalog-batched.yaml --preflight never
 
 name: $name
-description: Configurable $shards-shard Codex fuzz campaign backed by a CSV shard catalog with automatic $batch_count-way batched reducers.
+description: Configurable $shards-shard Codex fuzz campaign backed by a CSV shard catalog generated from the `$preset` preset with automatic $batch_count-way batched reducers.
 working_dir: $working_dir
 concurrency: $concurrency
 
@@ -1562,6 +1652,7 @@ nodes:
 """
     ).substitute(
         name=name,
+        preset=preset.name,
         shards=shards,
         batch_size=batch_size,
         batch_count=batch_count,
@@ -1574,7 +1665,7 @@ nodes:
         support_files=(
             RenderedBundledTemplateFile(
                 relative_path=_FUZZ_CATALOG_SUPPORT_FILE,
-                content=_render_codex_fuzz_catalog_csv(shards),
+                content=_render_codex_fuzz_catalog_csv(shards, preset=preset),
             ),
         ),
     )
@@ -1583,9 +1674,10 @@ nodes:
 def _render_codex_fuzz_catalog_grouped_template(values: Mapping[str, str] | None = None) -> RenderedBundledTemplate:
     template_name = "codex-fuzz-catalog-grouped"
     raw_values = dict(values or {})
-    allowed = {"shards", "concurrency", "name", "working_dir"}
+    allowed = {"preset", "shards", "concurrency", "name", "working_dir"}
     _validate_template_settings(template_name, raw_values, allowed=allowed)
 
+    preset = _resolve_fuzz_campaign_preset(template_name, raw_values)
     shards = _parse_positive_template_int(
         template_name,
         "shards",
@@ -1618,13 +1710,15 @@ def _render_codex_fuzz_catalog_grouped_template(values: Mapping[str, str] | None
 # readable at large fanout sizes.
 #
 # Usage:
+#   agentflow template-presets
 #   agentflow init fuzz-catalog-grouped.yaml --template codex-fuzz-catalog-grouped
+#   agentflow init fuzz-browser-catalog-grouped-128.yaml --template codex-fuzz-catalog-grouped --set preset=browser-surface --set shards=128 --set concurrency=32
 #   agentflow init fuzz-catalog-grouped-64.yaml --template codex-fuzz-catalog-grouped --set shards=64 --set concurrency=16
 #   agentflow inspect fuzz-catalog-grouped.yaml --output summary
 #   agentflow run fuzz-catalog-grouped.yaml --preflight never
 
 name: $name
-description: Configurable hierarchical $shards-shard Codex fuzz campaign backed by a CSV shard catalog with reducers derived via `fanout.group_by`.
+description: Configurable hierarchical $shards-shard Codex fuzz campaign backed by a CSV shard catalog generated from the `$preset` preset with reducers derived via `fanout.group_by`.
 working_dir: $working_dir
 concurrency: $concurrency
 
@@ -1762,6 +1856,7 @@ nodes:
 """
     ).substitute(
         name=name,
+        preset=preset.name,
         shards=shards,
         working_dir=working_dir,
         concurrency=concurrency,
@@ -1772,7 +1867,7 @@ nodes:
         support_files=(
             RenderedBundledTemplateFile(
                 relative_path=_FUZZ_CATALOG_GROUPED_SUPPORT_FILE,
-                content=_render_codex_fuzz_catalog_csv(shards),
+                content=_render_codex_fuzz_catalog_csv(shards, preset=preset),
             ),
         ),
     )
@@ -1854,8 +1949,13 @@ _BUNDLED_TEMPLATES = (
     BundledTemplate(
         name="codex-fuzz-hierarchical-grouped",
         example_name="fuzz/codex-fuzz-hierarchical-grouped.yaml",
-        description="Configurable hierarchical Codex fuzz matrix that uses `fanout.group_by` to derive reducer families from the shard fanout.",
+        description="Configurable hierarchical Codex fuzz matrix that uses `fanout.group_by` to derive reducer families from a selectable preset-backed shard fanout.",
         parameters=(
+            BundledTemplateParameter(
+                name="preset",
+                description="Built-in fuzz campaign preset. Use `agentflow template-presets` to list choices.",
+                default=_DEFAULT_FUZZ_CAMPAIGN_PRESET,
+            ),
             BundledTemplateParameter(
                 name="bucket_count",
                 description="Number of reusable seed buckets to render into the sidecar axes manifest.",
@@ -1882,8 +1982,13 @@ _BUNDLED_TEMPLATES = (
     BundledTemplate(
         name="codex-fuzz-hierarchical-manifest",
         example_name="fuzz/codex-fuzz-hierarchical-manifest.yaml",
-        description="Configurable hierarchical Codex fuzz matrix that keeps reusable axes and reducer families in sidecar manifests.",
+        description="Configurable hierarchical Codex fuzz matrix that keeps preset-backed reusable axes and reducer families in sidecar manifests.",
         parameters=(
+            BundledTemplateParameter(
+                name="preset",
+                description="Built-in fuzz campaign preset. Use `agentflow template-presets` to list choices.",
+                default=_DEFAULT_FUZZ_CAMPAIGN_PRESET,
+            ),
             BundledTemplateParameter(
                 name="bucket_count",
                 description="Number of reusable seed buckets to render into the sidecar axes manifest.",
@@ -1913,8 +2018,13 @@ _BUNDLED_TEMPLATES = (
     BundledTemplate(
         name="codex-fuzz-matrix-manifest",
         example_name="fuzz/codex-fuzz-matrix-manifest.yaml",
-        description="Configurable Codex fuzz matrix that keeps reusable axes in `fanout.matrix_path` and scales by rendering more seed buckets.",
+        description="Configurable Codex fuzz matrix that keeps selectable preset-backed reusable axes in `fanout.matrix_path` and scales by rendering more seed buckets.",
         parameters=(
+            BundledTemplateParameter(
+                name="preset",
+                description="Built-in fuzz campaign preset. Use `agentflow template-presets` to list choices.",
+                default=_DEFAULT_FUZZ_CAMPAIGN_PRESET,
+            ),
             BundledTemplateParameter(
                 name="bucket_count",
                 description="Number of reusable seed buckets to render into the sidecar manifest.",
@@ -1945,10 +2055,21 @@ _BUNDLED_TEMPLATES = (
         support_files=("manifests/codex-fuzz-matrix-manifest-128.axes.yaml",),
     ),
     BundledTemplate(
+        name="codex-fuzz-browser-128",
+        example_name="fuzz/codex-fuzz-browser-128.yaml",
+        description="128-shard browser-surface Codex fuzz matrix generated from the `browser-surface` preset.",
+        support_files=("manifests/codex-fuzz-browser-128.axes.yaml",),
+    ),
+    BundledTemplate(
         name="codex-fuzz-catalog",
         example_name="fuzz/codex-fuzz-catalog.yaml",
-        description="Configurable Codex fuzz campaign backed by a CSV shard catalog; defaults to 128 shards and keeps per-shard labels and workdirs in the manifest.",
+        description="Configurable Codex fuzz campaign backed by a preset-generated CSV shard catalog; defaults to 128 shards and keeps per-shard labels and workdirs in the manifest.",
         parameters=(
+            BundledTemplateParameter(
+                name="preset",
+                description="Built-in fuzz campaign preset. Use `agentflow template-presets` to list choices.",
+                default=_DEFAULT_FUZZ_CAMPAIGN_PRESET,
+            ),
             BundledTemplateParameter(
                 name="shards",
                 description="Number of catalog rows and Codex fuzz workers to render.",
@@ -1975,8 +2096,13 @@ _BUNDLED_TEMPLATES = (
     BundledTemplate(
         name="codex-fuzz-catalog-batched",
         example_name="fuzz/codex-fuzz-catalog-batched.yaml",
-        description="Configurable Codex fuzz campaign backed by a CSV shard catalog with neutral `fanout.batches` reducers for large explicit shard rosters.",
+        description="Configurable Codex fuzz campaign backed by a preset-generated CSV shard catalog with neutral `fanout.batches` reducers for large explicit shard rosters.",
         parameters=(
+            BundledTemplateParameter(
+                name="preset",
+                description="Built-in fuzz campaign preset. Use `agentflow template-presets` to list choices.",
+                default=_DEFAULT_FUZZ_CAMPAIGN_PRESET,
+            ),
             BundledTemplateParameter(
                 name="shards",
                 description="Number of catalog rows and Codex fuzz workers to render.",
@@ -2008,8 +2134,13 @@ _BUNDLED_TEMPLATES = (
     BundledTemplate(
         name="codex-fuzz-catalog-grouped",
         example_name="fuzz/codex-fuzz-catalog-grouped.yaml",
-        description="Configurable hierarchical Codex fuzz campaign backed by a CSV shard catalog and staged reducers derived via `fanout.group_by`.",
+        description="Configurable hierarchical Codex fuzz campaign backed by a preset-generated CSV shard catalog and staged reducers derived via `fanout.group_by`.",
         parameters=(
+            BundledTemplateParameter(
+                name="preset",
+                description="Built-in fuzz campaign preset. Use `agentflow template-presets` to list choices.",
+                default=_DEFAULT_FUZZ_CAMPAIGN_PRESET,
+            ),
             BundledTemplateParameter(
                 name="shards",
                 description="Number of catalog rows and Codex fuzz workers to render.",

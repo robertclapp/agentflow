@@ -4,13 +4,15 @@
 # large campaigns in a spreadsheet without rewriting the reducer or launch settings.
 #
 # Usage:
+#   agentflow template-presets
 #   agentflow init fuzz-catalog.yaml --template codex-fuzz-catalog
+#   agentflow init fuzz-browser-catalog-128.yaml --template codex-fuzz-catalog --set preset=browser-surface --set shards=128 --set concurrency=32
 #   agentflow init fuzz-catalog-48.yaml --template codex-fuzz-catalog --set shards=48 --set concurrency=12
 #   agentflow inspect fuzz-catalog.yaml --output summary
 #   agentflow run fuzz-catalog.yaml --preflight never
 
 name: codex-fuzz-catalog-128
-description: Configurable 128-shard Codex fuzz campaign backed by a CSV shard catalog for maintainer-friendly retargeting.
+description: Configurable 128-shard Codex fuzz campaign backed by a CSV shard catalog generated from the `oss-fuzz-core` preset for maintainer-friendly retargeting.
 working_dir: ./codex_fuzz_catalog_128
 concurrency: 32
 

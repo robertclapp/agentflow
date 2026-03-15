@@ -5,13 +5,15 @@
 # hand-editing both the fuzzer matrix and the family reducers.
 #
 # Usage:
+#   agentflow template-presets
 #   agentflow init fuzz-hierarchical.yaml --template codex-fuzz-hierarchical-manifest
+#   agentflow init fuzz-browser-hierarchical-128.yaml --template codex-fuzz-hierarchical-manifest --set preset=browser-surface --set bucket_count=8 --set concurrency=32
 #   agentflow init fuzz-hierarchical-128.yaml --template codex-fuzz-hierarchical-manifest --set bucket_count=8 --set concurrency=32
 #   agentflow inspect fuzz-hierarchical.yaml --output summary
 #   agentflow run fuzz-hierarchical.yaml --preflight never
 
 name: codex-fuzz-hierarchical-manifest-64
-description: Configurable hierarchical 64-shard Codex fuzz matrix backed by manifests for reusable axes and family reducers.
+description: Configurable hierarchical 64-shard Codex fuzz matrix backed by manifests for the `oss-fuzz-core` preset's reusable axes and family reducers.
 working_dir: ./codex_fuzz_hierarchical_manifest_64
 concurrency: 16
 

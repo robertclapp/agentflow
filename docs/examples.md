@@ -18,13 +18,13 @@ Use this page to choose a starter without reading every bundled YAML file.
 | `codex-fuzz-matrix` | The shard roster is a clean cartesian product. | `fanout.matrix`. |
 | `codex-fuzz-matrix-derived` | The matrix also needs reusable labels or workdirs. | `fanout.derive`. |
 | `codex-fuzz-matrix-curated` | The matrix is mostly regular, but you need a few exclusions or bespoke shards. | `fanout.exclude`, `fanout.include`, `fanout.derive`. |
-| `codex-fuzz-matrix-manifest` | The matrix axes should live outside the main pipeline file. | `fanout.matrix_path`, rendered support manifest. |
-| `codex-fuzz-catalog` | Every shard needs explicit per-row metadata that is awkward to derive. | `fanout.values_path`, rendered CSV catalog. |
-| `codex-fuzz-catalog-batched` | Every shard needs explicit per-row metadata, but reducer families are not meaningful. | `fanout.values_path`, `fanout.batches`, rendered CSV catalog. |
-| `codex-fuzz-hierarchical-grouped` | Reducer families should be derived automatically from shard metadata. | `fanout.group_by`, `current.scope`, scoped reducers from the shard fanout. |
-| `codex-fuzz-hierarchical-manifest` | Reducer families should stay in a maintainer-owned sidecar roster. | `fanout.matrix_path` plus `values_path`. |
+| `codex-fuzz-matrix-manifest` | The matrix axes should live outside the main pipeline file, but you still want a realistic preset to start from. | `fanout.matrix_path`, rendered support manifest, `preset=...` scaffolding. |
+| `codex-fuzz-catalog` | Every shard needs explicit per-row metadata that is awkward to derive, but you want a preset-generated CSV as the starting point. | `fanout.values_path`, rendered CSV catalog, `preset=...` scaffolding. |
+| `codex-fuzz-catalog-batched` | Every shard needs explicit per-row metadata, but reducer families are not meaningful. | `fanout.values_path`, `fanout.batches`, rendered CSV catalog, `preset=...` scaffolding. |
+| `codex-fuzz-hierarchical-grouped` | Reducer families should be derived automatically from shard metadata. | `fanout.group_by`, `current.scope`, scoped reducers from the shard fanout, `preset=...` scaffolding. |
+| `codex-fuzz-hierarchical-manifest` | Reducer families should stay in a maintainer-owned sidecar roster. | `fanout.matrix_path` plus `values_path`, `preset=...` scaffolding. |
 
-The fixed `*-128` examples are reference snapshots when you want to inspect a full large DAG directly from the repo instead of rendering one with `agentflow init`.
+The fixed `*-128` examples are reference snapshots when you want to inspect a full large DAG directly from the repo instead of rendering one with `agentflow init`. That now includes the browser-oriented [`codex-fuzz-browser-128`](../examples/fuzz/codex-fuzz-browser-128.yaml) reference.
 
 ## Python DAGs
 
@@ -48,5 +48,6 @@ The fixed `*-128` examples are reference snapshots when you want to inspect a fu
 - Start with `codex-fanout-repo-sweep` for small repo reviews and move to `codex-repo-sweep-batched` once you need 32+ Codex workers or staged reducers.
 - Start with `codex-fuzz-swarm` for homogeneous campaigns, then move to `codex-fuzz-batched` when the final reducer becomes too large to read.
 - Use the matrix starters when shard metadata is derivable, and use the catalog starters when every shard needs explicit maintainer-owned metadata.
+- Use `agentflow template-presets` plus `--set preset=...` when you want a realistic starting roster such as `browser-surface` or `protocol-stack` before hand-tuning the generated manifests or CSV files.
 - Use `codex-fuzz-catalog-batched` when the catalog rows need intermediate reducers but there is no stable family field worth grouping on.
 - Prefer the manifest-backed starters when the shard roster or reducer roster should live in sidecar files that non-authors can edit.

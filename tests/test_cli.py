@@ -411,6 +411,13 @@ def test_init_command_requires_destination_for_template_with_support_files():
     )
 
 
+def test_init_command_requires_destination_for_browser_template_with_support_files():
+    result = runner.invoke(app, ["init", "--template", "codex-fuzz-browser-128"])
+
+    assert result.exit_code == 1
+    assert result.stderr == "Template `codex-fuzz-browser-128` includes support files and requires a destination path.\n"
+
+
 def test_init_command_requires_destination_for_rendered_template_with_support_files():
     result = runner.invoke(app, ["init", "--template", "codex-fuzz-catalog"])
 
@@ -557,20 +564,22 @@ def test_templates_command_lists_bundled_templates():
         "(source: `examples/fuzz/codex-fuzz-matrix-128.yaml`; use: `agentflow init --template codex-fuzz-matrix-128`)\n"
         "- codex-fuzz-hierarchical-128: 128-shard Codex fuzz matrix with per-target reducers that use fanout summaries to keep large merges readable. "
         "(source: `examples/fuzz/codex-fuzz-hierarchical-128.yaml`; use: `agentflow init --template codex-fuzz-hierarchical-128`)\n"
-        "- codex-fuzz-hierarchical-grouped: Configurable hierarchical Codex fuzz matrix that uses `fanout.group_by` to derive reducer families from the shard fanout. "
-        "(params: `bucket_count=4`, `concurrency=16`, `name=codex-fuzz-hierarchical-grouped-<shards>`, `working_dir=./codex_fuzz_hierarchical_grouped_<shards>`; assets: `manifests/codex-fuzz-hierarchical-grouped.axes.yaml`; source: `examples/fuzz/codex-fuzz-hierarchical-grouped.yaml`; use: `agentflow init --template codex-fuzz-hierarchical-grouped`)\n"
-        "- codex-fuzz-hierarchical-manifest: Configurable hierarchical Codex fuzz matrix that keeps reusable axes and reducer families in sidecar manifests. "
-        "(params: `bucket_count=4`, `concurrency=16`, `name=codex-fuzz-hierarchical-manifest-<shards>`, `working_dir=./codex_fuzz_hierarchical_manifest_<shards>`; assets: `manifests/codex-fuzz-hierarchical.axes.yaml`, `manifests/codex-fuzz-hierarchical.families.yaml`; source: `examples/fuzz/codex-fuzz-hierarchical-manifest.yaml`; use: `agentflow init --template codex-fuzz-hierarchical-manifest`)\n"
-        "- codex-fuzz-matrix-manifest: Configurable Codex fuzz matrix that keeps reusable axes in `fanout.matrix_path` and scales by rendering more seed buckets. "
-        "(params: `bucket_count=4`, `concurrency=16`, `name=codex-fuzz-matrix-manifest-<shards>`, `working_dir=./codex_fuzz_matrix_manifest_<shards>`; assets: `manifests/codex-fuzz-matrix.axes.yaml`; source: `examples/fuzz/codex-fuzz-matrix-manifest.yaml`; use: `agentflow init --template codex-fuzz-matrix-manifest`)\n"
+        "- codex-fuzz-hierarchical-grouped: Configurable hierarchical Codex fuzz matrix that uses `fanout.group_by` to derive reducer families from a selectable preset-backed shard fanout. "
+        "(params: `preset=oss-fuzz-core`, `bucket_count=4`, `concurrency=16`, `name=codex-fuzz-hierarchical-grouped-<shards>`, `working_dir=./codex_fuzz_hierarchical_grouped_<shards>`; assets: `manifests/codex-fuzz-hierarchical-grouped.axes.yaml`; source: `examples/fuzz/codex-fuzz-hierarchical-grouped.yaml`; use: `agentflow init --template codex-fuzz-hierarchical-grouped`)\n"
+        "- codex-fuzz-hierarchical-manifest: Configurable hierarchical Codex fuzz matrix that keeps preset-backed reusable axes and reducer families in sidecar manifests. "
+        "(params: `preset=oss-fuzz-core`, `bucket_count=4`, `concurrency=16`, `name=codex-fuzz-hierarchical-manifest-<shards>`, `working_dir=./codex_fuzz_hierarchical_manifest_<shards>`; assets: `manifests/codex-fuzz-hierarchical.axes.yaml`, `manifests/codex-fuzz-hierarchical.families.yaml`; source: `examples/fuzz/codex-fuzz-hierarchical-manifest.yaml`; use: `agentflow init --template codex-fuzz-hierarchical-manifest`)\n"
+        "- codex-fuzz-matrix-manifest: Configurable Codex fuzz matrix that keeps selectable preset-backed reusable axes in `fanout.matrix_path` and scales by rendering more seed buckets. "
+        "(params: `preset=oss-fuzz-core`, `bucket_count=4`, `concurrency=16`, `name=codex-fuzz-matrix-manifest-<shards>`, `working_dir=./codex_fuzz_matrix_manifest_<shards>`; assets: `manifests/codex-fuzz-matrix.axes.yaml`; source: `examples/fuzz/codex-fuzz-matrix-manifest.yaml`; use: `agentflow init --template codex-fuzz-matrix-manifest`)\n"
         "- codex-fuzz-matrix-manifest-128: 128-shard Codex fuzz matrix that loads its axes from `fanout.matrix_path` for easier maintainer edits. "
         "(assets: `manifests/codex-fuzz-matrix-manifest-128.axes.yaml`; source: `examples/fuzz/codex-fuzz-matrix-manifest-128.yaml`; use: `agentflow init --template codex-fuzz-matrix-manifest-128`)\n"
-        "- codex-fuzz-catalog: Configurable Codex fuzz campaign backed by a CSV shard catalog; defaults to 128 shards and keeps per-shard labels and workdirs in the manifest. "
-        "(params: `shards=128`, `concurrency=32`, `name=codex-fuzz-catalog-<shards>`, `working_dir=./codex_fuzz_catalog_<shards>`; assets: `manifests/codex-fuzz-catalog.csv`; source: `examples/fuzz/codex-fuzz-catalog.yaml`; use: `agentflow init --template codex-fuzz-catalog`)\n"
-        "- codex-fuzz-catalog-batched: Configurable Codex fuzz campaign backed by a CSV shard catalog with neutral `fanout.batches` reducers for large explicit shard rosters. "
-        "(params: `shards=128`, `batch_size=16`, `concurrency=32`, `name=codex-fuzz-catalog-batched-<shards>`, `working_dir=./codex_fuzz_catalog_batched_<shards>`; assets: `manifests/codex-fuzz-catalog.csv`; source: `examples/fuzz/codex-fuzz-catalog-batched.yaml`; use: `agentflow init --template codex-fuzz-catalog-batched`)\n"
-        "- codex-fuzz-catalog-grouped: Configurable hierarchical Codex fuzz campaign backed by a CSV shard catalog and staged reducers derived via `fanout.group_by`. "
-        "(params: `shards=128`, `concurrency=32`, `name=codex-fuzz-catalog-grouped-<shards>`, `working_dir=./codex_fuzz_catalog_grouped_<shards>`; assets: `manifests/codex-fuzz-catalog-grouped.csv`; source: `examples/fuzz/codex-fuzz-catalog-grouped.yaml`; use: `agentflow init --template codex-fuzz-catalog-grouped`)\n"
+        "- codex-fuzz-browser-128: 128-shard browser-surface Codex fuzz matrix generated from the `browser-surface` preset. "
+        "(assets: `manifests/codex-fuzz-browser-128.axes.yaml`; source: `examples/fuzz/codex-fuzz-browser-128.yaml`; use: `agentflow init --template codex-fuzz-browser-128`)\n"
+        "- codex-fuzz-catalog: Configurable Codex fuzz campaign backed by a preset-generated CSV shard catalog; defaults to 128 shards and keeps per-shard labels and workdirs in the manifest. "
+        "(params: `preset=oss-fuzz-core`, `shards=128`, `concurrency=32`, `name=codex-fuzz-catalog-<shards>`, `working_dir=./codex_fuzz_catalog_<shards>`; assets: `manifests/codex-fuzz-catalog.csv`; source: `examples/fuzz/codex-fuzz-catalog.yaml`; use: `agentflow init --template codex-fuzz-catalog`)\n"
+        "- codex-fuzz-catalog-batched: Configurable Codex fuzz campaign backed by a preset-generated CSV shard catalog with neutral `fanout.batches` reducers for large explicit shard rosters. "
+        "(params: `preset=oss-fuzz-core`, `shards=128`, `batch_size=16`, `concurrency=32`, `name=codex-fuzz-catalog-batched-<shards>`, `working_dir=./codex_fuzz_catalog_batched_<shards>`; assets: `manifests/codex-fuzz-catalog.csv`; source: `examples/fuzz/codex-fuzz-catalog-batched.yaml`; use: `agentflow init --template codex-fuzz-catalog-batched`)\n"
+        "- codex-fuzz-catalog-grouped: Configurable hierarchical Codex fuzz campaign backed by a preset-generated CSV shard catalog and staged reducers derived via `fanout.group_by`. "
+        "(params: `preset=oss-fuzz-core`, `shards=128`, `concurrency=32`, `name=codex-fuzz-catalog-grouped-<shards>`, `working_dir=./codex_fuzz_catalog_grouped_<shards>`; assets: `manifests/codex-fuzz-catalog-grouped.csv`; source: `examples/fuzz/codex-fuzz-catalog-grouped.yaml`; use: `agentflow init --template codex-fuzz-catalog-grouped`)\n"
         "- codex-fuzz-batched: Configurable Codex fuzz swarm that uses `fanout.batches` to create scoped batch reducers for large shard counts. "
         "(params: `shards=128`, `batch_size=16`, `concurrency=32`, `name=codex-fuzz-batched-<shards>`, `working_dir=./codex_fuzz_batched_<shards>`; source: `examples/fuzz/codex-fuzz-batched.yaml`; use: `agentflow init --template codex-fuzz-batched`)\n"
         "- codex-fuzz-swarm: Configurable Codex fuzz swarm scaffold; defaults to 32 shards and scales cleanly to larger campaigns. "
@@ -583,6 +592,22 @@ def test_templates_command_lists_bundled_templates():
         "(source: `examples/local-real-agents-kimi-shell-init-smoke.yaml`; use: `agentflow init --template local-kimi-shell-init-smoke`)\n"
         "- local-kimi-shell-wrapper-smoke: Local Codex plus Claude-on-Kimi smoke DAG using an explicit `target.shell` Kimi wrapper. "
         "(source: `examples/local-real-agents-kimi-shell-wrapper-smoke.yaml`; use: `agentflow init --template local-kimi-shell-wrapper-smoke`)\n"
+    )
+
+
+def test_template_presets_command_lists_bundled_presets():
+    result = runner.invoke(app, ["template-presets"])
+
+    assert result.exit_code == 0
+    assert result.stdout == (
+        "Bundled template presets:\n"
+        "- oss-fuzz-core: Balanced native parser campaign across media, fonts, and storage surfaces. "
+        "(targets: `libpng/png`, `libjpeg/jpeg`, `freetype/fonts`, `sqlite/sql`; strategies: `asan/parser`, `asan/structure-aware`, `ubsan/differential`, `ubsan/stateful`)\n"
+        "- browser-surface: Browser-adjacent HTML, JS, font, and image surfaces for renderer-oriented campaigns. "
+        "(targets: `blink/html`, `v8/js`, `woff2/fonts`, `libwebp/webp`; strategies: `asan/parser`, `asan/structure-aware`, `ubsan/differential`, `ubsan/stateful`)\n"
+        "- protocol-stack: Protocol and transport libraries across DNS, HTTP/2, QUIC, and TLS inputs. "
+        "(targets: `c-ares/dns`, `nghttp2/http2`, `quiche/quic`, `openssl/tls`; strategies: `asan/parser`, `asan/structure-aware`, `ubsan/differential`, `ubsan/stateful`)\n"
+        "Templates supporting `preset=`: `codex-fuzz-hierarchical-grouped`, `codex-fuzz-hierarchical-manifest`, `codex-fuzz-matrix-manifest`, `codex-fuzz-catalog`, `codex-fuzz-catalog-batched`, `codex-fuzz-catalog-grouped`\n"
     )
 
 
@@ -662,6 +687,58 @@ def test_init_command_writes_selected_template_and_support_files_to_destination(
     support_text = support_file.read_text(encoding="utf-8")
     assert "seed_bucket:" in support_text
     assert "seed_008" in support_text
+
+
+def test_init_command_writes_preset_rendered_template_and_support_files_to_destination(tmp_path):
+    destination = tmp_path / "templates" / "fuzz-browser.yaml"
+
+    result = runner.invoke(
+        app,
+        [
+            "init",
+            str(destination),
+            "--template",
+            "codex-fuzz-matrix-manifest",
+            "--set",
+            "preset=browser-surface",
+            "--set",
+            "bucket_count=8",
+            "--set",
+            "concurrency=32",
+            "--set",
+            "name=custom-browser-128",
+            "--set",
+            "working_dir=./custom_browser",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout == f"Wrote `codex-fuzz-matrix-manifest` template to `{destination}`.\n"
+    rendered_yaml = destination.read_text(encoding="utf-8")
+    assert "\nname: custom-browser-128\n" in f"\n{rendered_yaml}"
+    assert "browser-surface" in rendered_yaml
+    support_file = destination.parent / "manifests" / "codex-fuzz-matrix.axes.yaml"
+    assert support_file.exists()
+    support_text = support_file.read_text(encoding="utf-8")
+    assert "  - target: blink" in support_text
+    assert "  - target: libwebp" in support_text
+
+
+def test_init_command_writes_browser_template_and_support_files_to_destination(tmp_path):
+    destination = tmp_path / "templates" / "fuzz-browser-128.yaml"
+
+    result = runner.invoke(app, ["init", str(destination), "--template", "codex-fuzz-browser-128"])
+
+    assert result.exit_code == 0
+    assert result.stdout == f"Wrote `codex-fuzz-browser-128` template to `{destination}`.\n"
+    rendered_yaml = destination.read_text(encoding="utf-8")
+    assert "\nname: codex-fuzz-browser-128\n" in f"\n{rendered_yaml}"
+    assert "browser-surface" in rendered_yaml
+    support_file = destination.parent / "manifests" / "codex-fuzz-browser-128.axes.yaml"
+    assert support_file.exists()
+    support_text = support_file.read_text(encoding="utf-8")
+    assert "  - target: blink" in support_text
+    assert "  - target: libwebp" in support_text
 
 
 def test_init_command_writes_hierarchical_template_and_support_files_to_destination(tmp_path):

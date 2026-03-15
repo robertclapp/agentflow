@@ -6,13 +6,15 @@
 # family manifest in sync.
 #
 # Usage:
+#   agentflow template-presets
 #   agentflow init fuzz-hierarchical-grouped.yaml --template codex-fuzz-hierarchical-grouped
+#   agentflow init fuzz-browser-grouped-128.yaml --template codex-fuzz-hierarchical-grouped --set preset=browser-surface --set bucket_count=8 --set concurrency=32
 #   agentflow init fuzz-hierarchical-grouped-128.yaml --template codex-fuzz-hierarchical-grouped --set bucket_count=8 --set concurrency=32
 #   agentflow inspect fuzz-hierarchical-grouped.yaml --output summary
 #   agentflow run fuzz-hierarchical-grouped.yaml --preflight never
 
 name: codex-fuzz-hierarchical-grouped-64
-description: Configurable hierarchical 64-shard Codex fuzz matrix that derives per-target reducers from `fanout.group_by`.
+description: Configurable hierarchical 64-shard Codex fuzz matrix generated from the `oss-fuzz-core` preset and grouped reducers derived via `fanout.group_by`.
 working_dir: ./codex_fuzz_hierarchical_grouped_64
 concurrency: 16
 

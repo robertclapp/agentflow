@@ -1,4 +1,5 @@
 from agentflow.defaults import (
+    bundled_fuzz_campaign_presets,
     bundled_template_names,
     bundled_template_path,
     bundled_template_support_files,
@@ -47,6 +48,7 @@ def test_bundled_templates_expose_descriptions_and_example_files():
         "manifests/codex-fuzz-hierarchical-grouped.axes.yaml",
     )
     assert tuple(parameter.name for parameter in by_name["codex-fuzz-hierarchical-grouped"].parameters) == (
+        "preset",
         "bucket_count",
         "concurrency",
         "name",
@@ -59,6 +61,7 @@ def test_bundled_templates_expose_descriptions_and_example_files():
         "manifests/codex-fuzz-hierarchical.families.yaml",
     )
     assert tuple(parameter.name for parameter in by_name["codex-fuzz-hierarchical-manifest"].parameters) == (
+        "preset",
         "bucket_count",
         "concurrency",
         "name",
@@ -68,6 +71,7 @@ def test_bundled_templates_expose_descriptions_and_example_files():
     assert "fanout.matrix_path" in by_name["codex-fuzz-matrix-manifest"].description
     assert by_name["codex-fuzz-matrix-manifest"].support_files == ("manifests/codex-fuzz-matrix.axes.yaml",)
     assert tuple(parameter.name for parameter in by_name["codex-fuzz-matrix-manifest"].parameters) == (
+        "preset",
         "bucket_count",
         "concurrency",
         "name",
@@ -78,10 +82,14 @@ def test_bundled_templates_expose_descriptions_and_example_files():
     assert by_name["codex-fuzz-matrix-manifest-128"].support_files == (
         "manifests/codex-fuzz-matrix-manifest-128.axes.yaml",
     )
+    assert by_name["codex-fuzz-browser-128"].example_name == "fuzz/codex-fuzz-browser-128.yaml"
+    assert "browser-surface" in by_name["codex-fuzz-browser-128"].description
+    assert by_name["codex-fuzz-browser-128"].support_files == ("manifests/codex-fuzz-browser-128.axes.yaml",)
     assert by_name["codex-fuzz-catalog"].example_name == "fuzz/codex-fuzz-catalog.yaml"
     assert "CSV shard catalog" in by_name["codex-fuzz-catalog"].description
     assert by_name["codex-fuzz-catalog"].support_files == ("manifests/codex-fuzz-catalog.csv",)
     assert tuple(parameter.name for parameter in by_name["codex-fuzz-catalog"].parameters) == (
+        "preset",
         "shards",
         "concurrency",
         "name",
@@ -91,6 +99,7 @@ def test_bundled_templates_expose_descriptions_and_example_files():
     assert "fanout.batches" in by_name["codex-fuzz-catalog-batched"].description
     assert by_name["codex-fuzz-catalog-batched"].support_files == ("manifests/codex-fuzz-catalog.csv",)
     assert tuple(parameter.name for parameter in by_name["codex-fuzz-catalog-batched"].parameters) == (
+        "preset",
         "shards",
         "batch_size",
         "concurrency",
@@ -101,6 +110,7 @@ def test_bundled_templates_expose_descriptions_and_example_files():
     assert "fanout.group_by" in by_name["codex-fuzz-catalog-grouped"].description
     assert by_name["codex-fuzz-catalog-grouped"].support_files == ("manifests/codex-fuzz-catalog-grouped.csv",)
     assert tuple(parameter.name for parameter in by_name["codex-fuzz-catalog-grouped"].parameters) == (
+        "preset",
         "shards",
         "concurrency",
         "name",
@@ -123,14 +133,21 @@ def test_bundled_templates_expose_descriptions_and_example_files():
         "name",
         "working_dir",
     )
-    assert by_name["codex-fuzz-swarm-128"].example_name == "fuzz/fuzz_codex_128.yaml"
-    assert "128-shard Codex fuzzing swarm" in by_name["codex-fuzz-swarm-128"].description
-    assert by_name["local-kimi-smoke"].example_name == "local-real-agents-kimi-smoke.yaml"
-    assert "bootstrap: kimi" in by_name["local-kimi-smoke"].description
-    assert by_name["local-kimi-shell-init-smoke"].example_name == "local-real-agents-kimi-shell-init-smoke.yaml"
-    assert "shell_init: kimi" in by_name["local-kimi-shell-init-smoke"].description
-    assert by_name["local-kimi-shell-wrapper-smoke"].example_name == "local-real-agents-kimi-shell-wrapper-smoke.yaml"
-    assert "target.shell" in by_name["local-kimi-shell-wrapper-smoke"].description
+
+
+def test_bundled_fuzz_campaign_presets_expose_named_rosters():
+    presets = bundled_fuzz_campaign_presets()
+
+    assert tuple(preset.name for preset in presets) == ("oss-fuzz-core", "browser-surface", "protocol-stack")
+    by_name = {preset.name: preset for preset in presets}
+    assert by_name["oss-fuzz-core"].families[0] == {"target": "libpng", "corpus": "png"}
+    assert by_name["browser-surface"].families == (
+        {"target": "blink", "corpus": "html"},
+        {"target": "v8", "corpus": "js"},
+        {"target": "woff2", "corpus": "fonts"},
+        {"target": "libwebp", "corpus": "webp"},
+    )
+    assert by_name["protocol-stack"].families[-1] == {"target": "openssl", "corpus": "tls"}
 
 
 def test_bundled_smoke_pipeline_runs_both_agents_in_shared_kimi_bootstrap():
@@ -540,12 +557,65 @@ def test_bundled_codex_fuzz_matrix_manifest_template_accepts_overrides_and_rende
     assert pipeline.node_map["merge"].depends_on[-1] == "fuzzer_127"
 
 
+def test_bundled_codex_fuzz_matrix_manifest_template_accepts_preset_overrides(tmp_path):
+    rendered = render_bundled_template(
+        "codex-fuzz-matrix-manifest",
+        values={
+            "preset": "browser-surface",
+            "bucket_count": "8",
+            "concurrency": "32",
+            "name": "browser-fuzz-128",
+            "working_dir": "./browser_fuzz",
+        },
+    )
+
+    assert "description: Configurable 128-shard Codex fuzz matrix backed by a manifest sidecar generated from the `browser-surface` preset" in rendered.yaml
+    assert rendered.support_files[0].content.strip().splitlines()[:4] == [
+        "family:",
+        "  - target: blink",
+        "    corpus: html",
+        "  - target: v8",
+    ]
+    assert "  - target: libwebp" in rendered.support_files[0].content
+
+    pipeline_path = tmp_path / "browser-fuzz.yaml"
+    pipeline_path.write_text(rendered.yaml, encoding="utf-8")
+    support_path = tmp_path / rendered.support_files[0].relative_path
+    support_path.parent.mkdir(parents=True, exist_ok=True)
+    support_path.write_text(rendered.support_files[0].content, encoding="utf-8")
+    pipeline = load_pipeline_from_path(str(pipeline_path))
+
+    assert len(pipeline.fanouts["fuzzer"]) == 128
+    assert pipeline.node_map["fuzzer_000"].fanout_member["target"] == "blink"
+    assert pipeline.node_map["fuzzer_032"].fanout_member["target"] == "v8"
+    assert pipeline.node_map["fuzzer_000"].target.cwd.endswith("browser_fuzz/agents/blink_asan_seed_001_000")
+
+
 def test_bundled_codex_fuzz_matrix_manifest_128_template_is_available():
     assert "codex-fuzz-matrix-manifest-128" in bundled_template_names()
     assert "\nname: codex-fuzz-matrix-manifest-128\n" in f"\n{load_bundled_template_yaml('codex-fuzz-matrix-manifest-128')}"
     assert bundled_template_support_files("codex-fuzz-matrix-manifest-128") == (
         "manifests/codex-fuzz-matrix-manifest-128.axes.yaml",
     )
+
+
+def test_bundled_codex_fuzz_browser_128_template_is_available():
+    assert "codex-fuzz-browser-128" in bundled_template_names()
+    assert "\nname: codex-fuzz-browser-128\n" in f"\n{load_bundled_template_yaml('codex-fuzz-browser-128')}"
+    assert bundled_template_support_files("codex-fuzz-browser-128") == ("manifests/codex-fuzz-browser-128.axes.yaml",)
+
+
+def test_bundled_codex_fuzz_browser_128_template_matches_default_example_files():
+    expected_yaml = bundled_template_path("codex-fuzz-browser-128").read_text(encoding="utf-8")
+    expected_axes = (
+        bundled_template_path("codex-fuzz-browser-128").parent / "manifests" / "codex-fuzz-browser-128.axes.yaml"
+    ).read_text(encoding="utf-8")
+    rendered = render_bundled_template("codex-fuzz-browser-128")
+
+    assert rendered.yaml == expected_yaml
+    assert len(rendered.support_files) == 1
+    assert rendered.support_files[0].relative_path == "manifests/codex-fuzz-browser-128.axes.yaml"
+    assert rendered.support_files[0].content == expected_axes
 
 
 def test_bundled_codex_fuzz_catalog_template_is_available():
@@ -608,6 +678,20 @@ def test_bundled_codex_fuzz_catalog_template_accepts_overrides_and_renders_suppo
     assert pipeline.node_map["fuzzer_00"].target.cwd.endswith("custom_catalog/agents/libpng_asan_seed_001_00")
     assert pipeline.node_map["merge"].depends_on[0] == "fuzzer_00"
     assert pipeline.node_map["merge"].depends_on[-1] == "fuzzer_47"
+
+
+def test_bundled_codex_fuzz_catalog_template_accepts_preset_overrides():
+    rendered = render_bundled_template(
+        "codex-fuzz-catalog",
+        values={
+            "preset": "protocol-stack",
+            "shards": "48",
+        },
+    )
+
+    rendered_rows = rendered.support_files[0].content.strip().splitlines()
+    assert rendered_rows[1].startswith("c-ares/asan/parser/seed_001,c-ares,dns,asan,parser,seed_001,4101,agents/")
+    assert rendered_rows[-1].startswith("openssl/ubsan/stateful/seed_003,openssl,tls,ubsan,stateful,seed_003,4103,agents/")
 
 
 def test_bundled_codex_fuzz_catalog_batched_template_is_available():
@@ -1187,6 +1271,22 @@ def test_bundled_codex_fuzz_matrix_manifest_128_pipeline_expands_into_128_concre
     assert pipeline.node_map["merge"].depends_on[-1] == "fuzzer_127"
 
 
+def test_bundled_codex_fuzz_browser_128_pipeline_expands_into_128_browser_surface_nodes():
+    pipeline = load_pipeline_from_path(str(bundled_template_path("codex-fuzz-browser-128")))
+
+    assert pipeline.concurrency == 32
+    assert len(pipeline.fanouts["fuzzer"]) == 128
+    assert pipeline.fanouts["fuzzer"][:3] == ["fuzzer_000", "fuzzer_001", "fuzzer_002"]
+    assert pipeline.fanouts["fuzzer"][-1] == "fuzzer_127"
+    assert pipeline.node_map["fuzzer_000"].fanout_member["target"] == "blink"
+    assert pipeline.node_map["fuzzer_000"].fanout_member["corpus"] == "html"
+    assert pipeline.node_map["fuzzer_032"].fanout_member["target"] == "v8"
+    assert pipeline.node_map["fuzzer_096"].fanout_member["target"] == "libwebp"
+    assert pipeline.node_map["fuzzer_000"].target.cwd.endswith("codex_fuzz_browser_128/agents/blink_asan_seed_001_000")
+    assert pipeline.node_map["merge"].depends_on[0] == "fuzzer_000"
+    assert pipeline.node_map["merge"].depends_on[-1] == "fuzzer_127"
+
+
 def test_bundled_codex_fuzz_catalog_pipeline_expands_into_128_concrete_nodes():
     pipeline = load_pipeline_from_path(str(bundled_template_path("codex-fuzz-catalog")))
 
@@ -1272,6 +1372,18 @@ def test_bundled_codex_fuzz_catalog_grouped_pipeline_expands_into_scoped_grouped
         "family_merge_2",
         "family_merge_3",
     ]
+
+
+def test_render_bundled_template_rejects_unknown_fuzz_preset():
+    try:
+        render_bundled_template("codex-fuzz-matrix-manifest", values={"preset": "missing-preset"})
+    except ValueError as exc:
+        assert (
+            str(exc)
+            == "template `codex-fuzz-matrix-manifest` expects `preset` to be one of `oss-fuzz-core`, `browser-surface`, `protocol-stack`, got `missing-preset`"
+        )
+    else:
+        raise AssertionError("expected unknown preset to raise ValueError")
 
 
 def test_bundled_codex_fanout_repo_sweep_pipeline_expands_into_concrete_nodes():

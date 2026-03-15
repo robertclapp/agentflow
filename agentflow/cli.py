@@ -14,6 +14,7 @@ import yaml
 import typer
 from pydantic import ValidationError
 from agentflow.defaults import (
+    bundled_fuzz_campaign_presets,
     bundled_templates,
     bundled_template_names,
     default_smoke_pipeline_path,
@@ -1982,6 +1983,29 @@ def templates() -> None:
             f"- {template.name}: {template.description} "
             f"({'; '.join(details)})"
         )
+    typer.echo("\n".join(lines))
+
+
+@app.command()
+def template_presets() -> None:
+    lines = ["Bundled template presets:"]
+    for preset in bundled_fuzz_campaign_presets():
+        target_summary = ", ".join(f"`{family['target']}/{family['corpus']}`" for family in preset.families)
+        strategy_summary = ", ".join(
+            f"`{strategy['sanitizer']}/{strategy['focus']}`" for strategy in preset.strategies
+        )
+        lines.append(
+            f"- {preset.name}: {preset.description} "
+            f"(targets: {target_summary}; strategies: {strategy_summary})"
+        )
+
+    supported_templates = [
+        f"`{template.name}`"
+        for template in bundled_templates()
+        if any(parameter.name == "preset" for parameter in template.parameters)
+    ]
+    if supported_templates:
+        lines.append("Templates supporting `preset=`: " + ", ".join(supported_templates))
     typer.echo("\n".join(lines))
 
 

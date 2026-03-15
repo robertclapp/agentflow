@@ -6,13 +6,15 @@
 # readable at large fanout sizes.
 #
 # Usage:
+#   agentflow template-presets
 #   agentflow init fuzz-catalog-grouped.yaml --template codex-fuzz-catalog-grouped
+#   agentflow init fuzz-browser-catalog-grouped-128.yaml --template codex-fuzz-catalog-grouped --set preset=browser-surface --set shards=128 --set concurrency=32
 #   agentflow init fuzz-catalog-grouped-64.yaml --template codex-fuzz-catalog-grouped --set shards=64 --set concurrency=16
 #   agentflow inspect fuzz-catalog-grouped.yaml --output summary
 #   agentflow run fuzz-catalog-grouped.yaml --preflight never
 
 name: codex-fuzz-catalog-grouped-128
-description: Configurable hierarchical 128-shard Codex fuzz campaign backed by a CSV shard catalog with reducers derived via `fanout.group_by`.
+description: Configurable hierarchical 128-shard Codex fuzz campaign backed by a CSV shard catalog generated from the `oss-fuzz-core` preset with reducers derived via `fanout.group_by`.
 working_dir: ./codex_fuzz_catalog_grouped_128
 concurrency: 32
 
