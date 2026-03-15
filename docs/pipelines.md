@@ -37,7 +37,7 @@ See `examples/airflow_like.py` for a complete runnable example.
 Each node supports:
 
 - `agent`: `codex`, `claude`, or `kimi`
-- `fanout`: expand one node definition into `count` concrete nodes before validation; accepts `count` and optional `as`
+- `fanout`: expand one node definition into concrete nodes before validation; accepts either `count` or `values`, plus optional `as`
 - `model`: any model string understood by the backend
 - `provider`: a string or a structured provider config with `base_url`, `api_key_env`, headers, and env
 - `tools`: `read_only` or `read_write`
@@ -83,9 +83,30 @@ nodes:
       {% endfor %}
 ```
 
+When each shard needs its own structured metadata, use `fanout.values` instead of `count`:
+
+```yaml
+nodes:
+  - id: fuzz
+    fanout:
+      as: shard
+      values:
+        - target: libpng
+          sanitizer: asan
+          seed: 1101
+        - target: sqlite
+          sanitizer: ubsan
+          seed: 2202
+    agent: codex
+    prompt: |
+      Fuzz {{ shard.target }} with {{ shard.sanitizer }} using seed {{ shard.seed }}.
+```
+
 Expansion rules:
 
+- A fan-out node accepts exactly one expansion mode: `count` for homogeneous numeric shards or `values` for explicit per-member metadata.
 - A fan-out node with `id: fuzz` and `count: 8` expands to `fuzz_0` through `fuzz_7`. The suffix is zero-padded when the fan-out size needs it, so `count: 128` becomes `fuzz_000` through `fuzz_127`.
+- When `fanout.values` is used, `count` becomes the list length, `value` holds the raw item, and dictionary item keys with identifier-friendly names are also exposed directly on the alias. That lets `{{ shard.value.seed }}` and `{{ shard.seed }}` both work for `values: [{seed: 1101}]`.
 - `fanout.as` picks the template variable name for pre-validation substitution. AgentFlow currently expands dotted placeholders rooted at that alias or `fanout`, such as `{{ shard.number }}`, `{{ shard.suffix }}`, `{{ fanout.count }}`, `target.cwd: agents/agent_{{ shard.suffix }}`, or `depends_on: ["prepare_{{ shard.suffix }}"]`.
 - Ordinary runtime prompt templates such as `{{ nodes.prepare.output }}` are left intact and still render at execution time.
 - A downstream `depends_on: [fuzz]` expands to all members of the `fuzz` group.

@@ -18,6 +18,10 @@ def test_bundled_templates_expose_descriptions_and_example_files():
     assert by_name["pipeline"].description == "Generic Codex/Claude/Kimi starter DAG."
     assert by_name["codex-fanout-repo-sweep"].example_name == "codex-fanout-repo-sweep.yaml"
     assert "8 review shards" in by_name["codex-fanout-repo-sweep"].description
+    assert by_name["codex-fuzz-matrix"].example_name == "fuzz/codex-fuzz-matrix.yaml"
+    assert "fanout.values" in by_name["codex-fuzz-matrix"].description
+    assert by_name["codex-fuzz-swarm-128"].example_name == "fuzz/fuzz_codex_128.yaml"
+    assert "128-shard Codex fuzzing swarm" in by_name["codex-fuzz-swarm-128"].description
     assert by_name["local-kimi-smoke"].example_name == "local-real-agents-kimi-smoke.yaml"
     assert "bootstrap: kimi" in by_name["local-kimi-smoke"].description
     assert by_name["local-kimi-shell-init-smoke"].example_name == "local-real-agents-kimi-shell-init-smoke.yaml"
@@ -83,6 +87,34 @@ def test_bundled_codex_fanout_repo_sweep_template_is_available():
     )
 
 
+def test_bundled_codex_fuzz_matrix_template_is_available():
+    assert "codex-fuzz-matrix" in bundled_template_names()
+    assert "\nname: codex-fuzz-matrix\n" in f"\n{load_bundled_template_yaml('codex-fuzz-matrix')}"
+
+
+def test_bundled_codex_fuzz_matrix_pipeline_expands_value_fanout_nodes():
+    pipeline = load_pipeline_from_path(str(bundled_template_path("codex-fuzz-matrix")))
+
+    assert pipeline.concurrency == 8
+    assert pipeline.fanouts == {
+        "fuzzer": ["fuzzer_0", "fuzzer_1", "fuzzer_2", "fuzzer_3", "fuzzer_4", "fuzzer_5", "fuzzer_6", "fuzzer_7"]
+    }
+    assert [node.id for node in pipeline.nodes[:3]] == ["init", "fuzzer_0", "fuzzer_1"]
+    assert pipeline.node_map["fuzzer_0"].prompt.startswith("You are Codex fuzz shard 1 of 8.")
+    assert "Target: libpng" in pipeline.node_map["fuzzer_0"].prompt
+    assert pipeline.node_map["fuzzer_0"].target.cwd.endswith("codex_fuzz_matrix/agents/libpng_asan_0")
+    assert pipeline.node_map["merge"].depends_on == [
+        "fuzzer_0",
+        "fuzzer_1",
+        "fuzzer_2",
+        "fuzzer_3",
+        "fuzzer_4",
+        "fuzzer_5",
+        "fuzzer_6",
+        "fuzzer_7",
+    ]
+
+
 def test_bundled_codex_fanout_repo_sweep_pipeline_expands_into_concrete_nodes():
     pipeline = load_pipeline_from_path(str(bundled_template_path("codex-fanout-repo-sweep")))
 
@@ -101,6 +133,22 @@ def test_bundled_codex_fanout_repo_sweep_pipeline_expands_into_concrete_nodes():
         "sweep_6",
         "sweep_7",
     ]
+
+
+def test_bundled_codex_fuzz_swarm_128_template_is_available():
+    assert "codex-fuzz-swarm-128" in bundled_template_names()
+    assert "\nname: codex-fuzz-swarm-128\n" in f"\n{load_bundled_template_yaml('codex-fuzz-swarm-128')}"
+
+
+def test_bundled_codex_fuzz_swarm_128_pipeline_expands_into_128_concrete_nodes():
+    pipeline = load_pipeline_from_path(str(bundled_template_path("codex-fuzz-swarm-128")))
+
+    assert pipeline.concurrency == 32
+    assert len(pipeline.fanouts["fuzzer"]) == 128
+    assert pipeline.fanouts["fuzzer"][:3] == ["fuzzer_000", "fuzzer_001", "fuzzer_002"]
+    assert pipeline.fanouts["fuzzer"][-1] == "fuzzer_127"
+    assert pipeline.node_map["merge"].depends_on[0] == "fuzzer_000"
+    assert pipeline.node_map["merge"].depends_on[-1] == "fuzzer_127"
 
 
 def test_bundled_shell_wrapper_smoke_pipeline_runs_both_agents_in_explicit_shell_wrapper_mode():

@@ -23,6 +23,16 @@ _BUNDLED_TEMPLATES = (
         description="Codex repo sweep that fans out one plan into 8 review shards and a final merge.",
     ),
     BundledTemplate(
+        name="codex-fuzz-matrix",
+        example_name="fuzz/codex-fuzz-matrix.yaml",
+        description="Codex fuzz starter that uses `fanout.values` for per-shard targets, sanitizers, and seeds.",
+    ),
+    BundledTemplate(
+        name="codex-fuzz-swarm-128",
+        example_name="fuzz/fuzz_codex_128.yaml",
+        description="128-shard Codex fuzzing swarm with init, retries, per-shard workdirs, and a merge reducer.",
+    ),
+    BundledTemplate(
         name="local-kimi-smoke",
         example_name="local-real-agents-kimi-smoke.yaml",
         description="Local Codex plus Claude-on-Kimi smoke DAG using `bootstrap: kimi`.",

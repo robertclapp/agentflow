@@ -157,3 +157,30 @@ nodes:
     assert [node.id for node in pipeline.nodes] == ["fuzz_0", "fuzz_1"]
     assert pipeline.nodes[0].target.cwd == str((workspace / "agents" / "agent_0").resolve())
     assert pipeline.nodes[1].target.cwd == str((workspace / "agents" / "agent_1").resolve())
+
+
+def test_load_pipeline_from_text_expands_fanout_values_before_resolving_relative_cwds(tmp_path):
+    workspace = tmp_path / "workspace"
+    pipeline = load_pipeline_from_text(
+        """name: fanout-values-loader
+working_dir: .
+nodes:
+  - id: fuzz
+    fanout:
+      as: shard
+      values:
+        - target: libpng
+        - target: sqlite
+    agent: codex
+    prompt: shard {{ shard.target }}
+    target:
+      kind: local
+      cwd: agents/{{ shard.target }}/{{ shard.suffix }}
+""",
+        base_dir=workspace,
+    )
+
+    assert pipeline.fanouts == {"fuzz": ["fuzz_0", "fuzz_1"]}
+    assert [node.id for node in pipeline.nodes] == ["fuzz_0", "fuzz_1"]
+    assert pipeline.nodes[0].target.cwd == str((workspace / "agents" / "libpng" / "0").resolve())
+    assert pipeline.nodes[1].target.cwd == str((workspace / "agents" / "sqlite" / "1").resolve())

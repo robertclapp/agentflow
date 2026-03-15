@@ -306,6 +306,15 @@ def test_init_command_prints_local_kimi_smoke_template():
     assert "provider: kimi" in result.stdout
 
 
+def test_init_command_prints_codex_fuzz_matrix_template():
+    result = runner.invoke(app, ["init", "--template", "codex-fuzz-matrix"])
+
+    assert result.exit_code == 0
+    assert "\nname: codex-fuzz-matrix\n" in f"\n{result.stdout}"
+    assert "fanout.values" in result.stdout
+    assert "target: libpng" in result.stdout
+
+
 def test_init_command_prints_local_kimi_shell_init_smoke_template():
     result = runner.invoke(app, ["init", "--template", "local-kimi-shell-init-smoke"])
 
@@ -334,6 +343,10 @@ def test_templates_command_lists_bundled_templates():
         "(source: `examples/pipeline.yaml`, use: `agentflow init --template pipeline`)\n"
         "- codex-fanout-repo-sweep: Codex repo sweep that fans out one plan into 8 review shards and a final merge. "
         "(source: `examples/codex-fanout-repo-sweep.yaml`, use: `agentflow init --template codex-fanout-repo-sweep`)\n"
+        "- codex-fuzz-matrix: Codex fuzz starter that uses `fanout.values` for per-shard targets, sanitizers, and seeds. "
+        "(source: `examples/fuzz/codex-fuzz-matrix.yaml`, use: `agentflow init --template codex-fuzz-matrix`)\n"
+        "- codex-fuzz-swarm-128: 128-shard Codex fuzzing swarm with init, retries, per-shard workdirs, and a merge reducer. "
+        "(source: `examples/fuzz/fuzz_codex_128.yaml`, use: `agentflow init --template codex-fuzz-swarm-128`)\n"
         "- local-kimi-smoke: Local Codex plus Claude-on-Kimi smoke DAG using `bootstrap: kimi`. "
         "(source: `examples/local-real-agents-kimi-smoke.yaml`, use: `agentflow init --template local-kimi-smoke`)\n"
         "- local-kimi-shell-init-smoke: Local Codex plus Claude-on-Kimi smoke DAG using explicit `shell_init: kimi`. "

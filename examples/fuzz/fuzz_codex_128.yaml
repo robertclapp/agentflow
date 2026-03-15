@@ -4,6 +4,7 @@
 # Tune `concurrency` to match the machine and account budget you actually have.
 #
 # Usage:
+#   agentflow init fuzz-128.yaml --template codex-fuzz-swarm-128
 #   agentflow inspect examples/fuzz/fuzz_codex_128.yaml
 #   agentflow run examples/fuzz/fuzz_codex_128.yaml --preflight never
 

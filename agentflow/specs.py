@@ -426,8 +426,18 @@ SuccessCriterion = Annotated[
 class FanoutSpec(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    count: int = Field(ge=1)
+    count: int | None = Field(default=None, ge=1)
+    values: list[Any] | None = None
     as_: str = Field(default="item", alias="as")
+
+    @field_validator("values")
+    @classmethod
+    def validate_values(cls, value: list[Any] | None) -> list[Any] | None:
+        if value is None:
+            return None
+        if not value:
+            raise ValueError("`fanout.values` must contain at least one item")
+        return value
 
     @field_validator("as_")
     @classmethod
@@ -443,6 +453,30 @@ class FanoutSpec(BaseModel):
         if not _FANOUT_ALIAS_PATTERN.fullmatch(normalized):
             raise ValueError("`fanout.as` must be a valid template variable name")
         return normalized
+
+    @model_validator(mode="after")
+    def validate_shape(self) -> "FanoutSpec":
+        if self.count is None and self.values is None:
+            raise ValueError("fanout requires either `count` or `values`")
+        if self.count is not None and self.values is not None:
+            raise ValueError("fanout accepts either `count` or `values`, not both")
+        return self
+
+    @property
+    def member_values(self) -> list[Any]:
+        if self.values is not None:
+            return self.values
+        if self.count is None:
+            return []
+        return list(range(self.count))
+
+    @property
+    def member_count(self) -> int:
+        if self.values is not None:
+            return len(self.values)
+        if self.count is None:
+            return 0
+        return self.count
 
 
 class NodeSpec(BaseModel):
@@ -484,17 +518,22 @@ def _fanout_suffix(index: int, count: int) -> str:
     return str(index).zfill(width)
 
 
-def _fanout_iteration_context(template_id: str, fanout: FanoutSpec, index: int) -> dict[str, Any]:
-    suffix = _fanout_suffix(index, fanout.count)
+def _fanout_iteration_context(template_id: str, fanout: FanoutSpec, index: int, value: Any) -> dict[str, Any]:
+    member_count = fanout.member_count
+    suffix = _fanout_suffix(index, member_count)
     member = {
         "index": index,
         "number": index + 1,
-        "count": fanout.count,
+        "count": member_count,
         "suffix": suffix,
-        "value": index,
+        "value": value,
         "template_id": template_id,
         "node_id": f"{template_id}_{suffix}",
     }
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if isinstance(key, str) and key not in member and _FANOUT_ALIAS_PATTERN.fullmatch(key):
+                member[key] = item
     return {fanout.as_: member, "fanout": member}
 
 
@@ -544,8 +583,8 @@ def _expand_fanout_node(node: dict[str, Any], fanout: FanoutSpec) -> tuple[list[
     node_template.pop("fanout", None)
     expanded_nodes: list[dict[str, Any]] = []
     member_ids: list[str] = []
-    for index in range(fanout.count):
-        iteration_context = _fanout_iteration_context(template_id, fanout, index)
+    for index, value in enumerate(fanout.member_values):
+        iteration_context = _fanout_iteration_context(template_id, fanout, index, value)
         expanded = _render_fanout_value(node_template, iteration_context)
         if not isinstance(expanded, dict):
             raise ValueError(f"fanout node {template_id!r} did not expand into an object")

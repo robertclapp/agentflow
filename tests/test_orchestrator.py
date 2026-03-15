@@ -195,6 +195,52 @@ async def test_orchestrator_renders_fanout_group_context_in_merge_prompt(tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_orchestrator_renders_fanout_values_context_in_merge_prompt(tmp_path: Path):
+    orchestrator = make_orchestrator(tmp_path)
+    pipeline = PipelineSpec.model_validate(
+        {
+            "name": "fanout-values",
+            "working_dir": str(tmp_path),
+            "concurrency": 2,
+            "nodes": [
+                {
+                    "id": "worker",
+                    "fanout": {
+                        "as": "shard",
+                        "values": [
+                            {"target": "libpng", "seed": 1001},
+                            {"target": "sqlite", "seed": 2002},
+                        ],
+                    },
+                    "agent": "codex",
+                    "prompt": "worker {{ shard.target }} seed {{ shard.seed }}",
+                },
+                {
+                    "id": "merge",
+                    "agent": "codex",
+                    "depends_on": ["worker"],
+                    "prompt": (
+                        "fanout={{ fanouts.worker.size }} :: "
+                        "{% for shard in fanouts.worker.nodes %}"
+                        "{{ shard.id }}={{ shard.output }};"
+                        "{% endfor %}"
+                    ),
+                },
+            ],
+        }
+    )
+
+    run = await orchestrator.submit(pipeline)
+    completed = await orchestrator.wait(run.id, timeout=5)
+
+    assert completed.status.value == "completed"
+    assert set(completed.nodes) == {"worker_0", "worker_1", "merge"}
+    assert completed.nodes["worker_0"].output == "worker libpng seed 1001"
+    assert completed.nodes["worker_1"].output == "worker sqlite seed 2002"
+    assert completed.nodes["merge"].output == "fanout=2 :: worker_0=worker libpng seed 1001;worker_1=worker sqlite seed 2002;"
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_waits_for_terminal_persist_before_returning(tmp_path: Path):
     adapters = AdapterRegistry()
     adapters.register(AgentKind.CODEX, MockAdapter())

@@ -261,6 +261,68 @@ def test_pipeline_validation_expands_fanout_nodes_and_group_dependencies():
     assert pipeline.node_map["merge"].depends_on == ["fuzz_0", "fuzz_1", "fuzz_2"]
 
 
+def test_pipeline_validation_expands_fanout_value_nodes_and_group_dependencies():
+    pipeline = PipelineSpec.model_validate(
+        {
+            "name": "fanout-values-validation",
+            "working_dir": ".",
+            "nodes": [
+                {
+                    "id": "fuzz",
+                    "fanout": {
+                        "as": "shard",
+                        "values": [
+                            {"target": "libpng", "seed": 101},
+                            {"target": "sqlite", "seed": 202},
+                        ],
+                    },
+                    "agent": "codex",
+                    "prompt": "fuzz {{ shard.target }} with {{ shard.value.seed }} in {{ shard.node_id }}",
+                    "target": {
+                        "kind": "local",
+                        "cwd": "agents/{{ shard.target }}_{{ shard.suffix }}",
+                    },
+                },
+                {
+                    "id": "merge",
+                    "agent": "codex",
+                    "depends_on": ["fuzz"],
+                    "prompt": "merge",
+                },
+            ],
+        }
+    )
+
+    assert pipeline.fanouts == {"fuzz": ["fuzz_0", "fuzz_1"]}
+    assert [node.id for node in pipeline.nodes] == ["fuzz_0", "fuzz_1", "merge"]
+    assert pipeline.nodes[0].prompt == "fuzz libpng with 101 in fuzz_0"
+    assert pipeline.nodes[1].prompt == "fuzz sqlite with 202 in fuzz_1"
+    assert pipeline.nodes[0].target.cwd == "agents/libpng_0"
+    assert pipeline.nodes[1].target.cwd == "agents/sqlite_1"
+    assert pipeline.node_map["merge"].depends_on == ["fuzz_0", "fuzz_1"]
+
+
+def test_pipeline_validation_rejects_fanout_with_both_count_and_values():
+    with pytest.raises(ValueError, match=r"fanout accepts either `count` or `values`, not both"):
+        PipelineSpec.model_validate(
+            {
+                "name": "bad-fanout-shape",
+                "working_dir": ".",
+                "nodes": [
+                    {
+                        "id": "fuzz",
+                        "fanout": {
+                            "count": 2,
+                            "values": ["a", "b"],
+                        },
+                        "agent": "codex",
+                        "prompt": "hi",
+                    }
+                ],
+            }
+        )
+
+
 def test_pipeline_validation_rejects_invalid_fanout_alias():
     with pytest.raises(ValueError, match=r"fanout\.as.*valid template variable name"):
         PipelineSpec.model_validate(
