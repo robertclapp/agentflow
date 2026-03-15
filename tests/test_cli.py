@@ -315,6 +315,41 @@ def test_init_command_prints_codex_fuzz_matrix_template():
     assert "target: libpng" in result.stdout
 
 
+def test_init_command_prints_codex_fuzz_swarm_template():
+    result = runner.invoke(app, ["init", "--template", "codex-fuzz-swarm"])
+
+    assert result.exit_code == 0
+    assert "\nname: codex-fuzz-swarm-32\n" in f"\n{result.stdout}"
+    assert "count: 32" in result.stdout
+    assert "For each shard suffix from 00 through 31" in result.stdout
+
+
+def test_init_command_prints_custom_codex_fuzz_swarm_template():
+    result = runner.invoke(
+        app,
+        [
+            "init",
+            "--template",
+            "codex-fuzz-swarm",
+            "--set",
+            "shards=128",
+            "--set",
+            "concurrency=24",
+            "--set",
+            "name=custom-fuzz-128",
+            "--set",
+            "working_dir=./custom_swarm",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "\nname: custom-fuzz-128\n" in f"\n{result.stdout}"
+    assert "working_dir: ./custom_swarm" in result.stdout
+    assert "concurrency: 24" in result.stdout
+    assert "count: 128" in result.stdout
+    assert "For each shard suffix from 000 through 127" in result.stdout
+
+
 def test_init_command_prints_local_kimi_shell_init_smoke_template():
     result = runner.invoke(app, ["init", "--template", "local-kimi-shell-init-smoke"])
 
@@ -340,19 +375,21 @@ def test_templates_command_lists_bundled_templates():
     assert result.stdout == (
         "Bundled templates:\n"
         "- pipeline: Generic Codex/Claude/Kimi starter DAG. "
-        "(source: `examples/pipeline.yaml`, use: `agentflow init --template pipeline`)\n"
+        "(source: `examples/pipeline.yaml`; use: `agentflow init --template pipeline`)\n"
         "- codex-fanout-repo-sweep: Codex repo sweep that fans out one plan into 8 review shards and a final merge. "
-        "(source: `examples/codex-fanout-repo-sweep.yaml`, use: `agentflow init --template codex-fanout-repo-sweep`)\n"
+        "(source: `examples/codex-fanout-repo-sweep.yaml`; use: `agentflow init --template codex-fanout-repo-sweep`)\n"
         "- codex-fuzz-matrix: Codex fuzz starter that uses `fanout.values` for per-shard targets, sanitizers, and seeds. "
-        "(source: `examples/fuzz/codex-fuzz-matrix.yaml`, use: `agentflow init --template codex-fuzz-matrix`)\n"
+        "(source: `examples/fuzz/codex-fuzz-matrix.yaml`; use: `agentflow init --template codex-fuzz-matrix`)\n"
+        "- codex-fuzz-swarm: Configurable Codex fuzz swarm scaffold; defaults to 32 shards and scales cleanly to larger campaigns. "
+        "(params: `shards=32`, `concurrency=8`, `name=codex-fuzz-swarm-<shards>`, `working_dir=./codex_fuzz_swarm_<shards>`; source: `examples/fuzz/fuzz_codex_32.yaml`; use: `agentflow init --template codex-fuzz-swarm`)\n"
         "- codex-fuzz-swarm-128: 128-shard Codex fuzzing swarm with init, retries, per-shard workdirs, and a merge reducer. "
-        "(source: `examples/fuzz/fuzz_codex_128.yaml`, use: `agentflow init --template codex-fuzz-swarm-128`)\n"
+        "(source: `examples/fuzz/fuzz_codex_128.yaml`; use: `agentflow init --template codex-fuzz-swarm-128`)\n"
         "- local-kimi-smoke: Local Codex plus Claude-on-Kimi smoke DAG using `bootstrap: kimi`. "
-        "(source: `examples/local-real-agents-kimi-smoke.yaml`, use: `agentflow init --template local-kimi-smoke`)\n"
+        "(source: `examples/local-real-agents-kimi-smoke.yaml`; use: `agentflow init --template local-kimi-smoke`)\n"
         "- local-kimi-shell-init-smoke: Local Codex plus Claude-on-Kimi smoke DAG using explicit `shell_init: kimi`. "
-        "(source: `examples/local-real-agents-kimi-shell-init-smoke.yaml`, use: `agentflow init --template local-kimi-shell-init-smoke`)\n"
+        "(source: `examples/local-real-agents-kimi-shell-init-smoke.yaml`; use: `agentflow init --template local-kimi-shell-init-smoke`)\n"
         "- local-kimi-shell-wrapper-smoke: Local Codex plus Claude-on-Kimi smoke DAG using an explicit `target.shell` Kimi wrapper. "
-        "(source: `examples/local-real-agents-kimi-shell-wrapper-smoke.yaml`, use: `agentflow init --template local-kimi-shell-wrapper-smoke`)\n"
+        "(source: `examples/local-real-agents-kimi-shell-wrapper-smoke.yaml`; use: `agentflow init --template local-kimi-shell-wrapper-smoke`)\n"
     )
 
 
@@ -385,6 +422,30 @@ def test_init_command_rejects_unknown_template():
     assert "`pipeline`" in result.stderr
     assert "`local-kimi-smoke`" in result.stderr
     assert "`agentflow templates`" in result.stderr
+
+
+def test_init_command_rejects_invalid_template_setting_format():
+    result = runner.invoke(app, ["init", "--template", "codex-fuzz-swarm", "--set", "shards"])
+
+    assert result.exit_code != 0
+    assert "template settings must use KEY=VALUE form" in result.stderr
+
+
+def test_init_command_rejects_unknown_template_setting():
+    result = runner.invoke(app, ["init", "--template", "codex-fuzz-swarm", "--set", "unknown=1"])
+
+    assert result.exit_code != 0
+    assert "does not recognize" in result.stderr
+    assert "`unknown`" in result.stderr
+    assert "`shards`" in result.stderr
+    assert "`working_dir`" in result.stderr
+
+
+def test_init_command_rejects_template_settings_for_static_template():
+    result = runner.invoke(app, ["init", "--template", "pipeline", "--set", "shards=64"])
+
+    assert result.exit_code != 0
+    assert "template `pipeline` does not accept `--set` values" in result.stderr
 
 
 def test_python_module_entrypoint_displays_help():

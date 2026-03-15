@@ -24,7 +24,8 @@ agentflow templates
 agentflow init > pipeline.yaml
 agentflow init repo-sweep.yaml --template codex-fanout-repo-sweep
 agentflow init fuzz-matrix.yaml --template codex-fuzz-matrix
-agentflow init fuzz-128.yaml --template codex-fuzz-swarm-128
+agentflow init fuzz-swarm.yaml --template codex-fuzz-swarm
+agentflow init fuzz-128.yaml --template codex-fuzz-swarm --set shards=128 --set concurrency=32
 agentflow validate pipeline.yaml
 agentflow run pipeline.yaml
 ```
@@ -139,7 +140,7 @@ nodes:
       Fuzz {{ shard.target }} with {{ shard.sanitizer }} using seed {{ shard.seed }}.
 ```
 
-See `examples/codex-fanout-repo-sweep.yaml` for a bundled maintainer-friendly review template, `examples/fuzz/codex-fuzz-matrix.yaml` for a `fanout.values` fuzz starter, and `examples/fuzz/fuzz_codex_128.yaml` for a compact 128-shard Codex fuzzing swarm. The latter two are also scaffoldable via `agentflow init --template codex-fuzz-matrix` and `agentflow init --template codex-fuzz-swarm-128`.
+See `examples/codex-fanout-repo-sweep.yaml` for a bundled maintainer-friendly review template, `examples/fuzz/codex-fuzz-matrix.yaml` for a `fanout.values` fuzz starter, `examples/fuzz/fuzz_codex_32.yaml` for the default right-sized Codex fuzz swarm, and `examples/fuzz/fuzz_codex_128.yaml` for the fixed 128-shard reference swarm. The fuzz starters are scaffoldable via `agentflow init --template codex-fuzz-matrix`, `agentflow init --template codex-fuzz-swarm`, and `agentflow init --template codex-fuzz-swarm --set shards=128 --set concurrency=32`.
 
 ## Docs
 

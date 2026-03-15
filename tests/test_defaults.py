@@ -20,6 +20,14 @@ def test_bundled_templates_expose_descriptions_and_example_files():
     assert "8 review shards" in by_name["codex-fanout-repo-sweep"].description
     assert by_name["codex-fuzz-matrix"].example_name == "fuzz/codex-fuzz-matrix.yaml"
     assert "fanout.values" in by_name["codex-fuzz-matrix"].description
+    assert by_name["codex-fuzz-swarm"].example_name == "fuzz/fuzz_codex_32.yaml"
+    assert "defaults to 32 shards" in by_name["codex-fuzz-swarm"].description
+    assert tuple(parameter.name for parameter in by_name["codex-fuzz-swarm"].parameters) == (
+        "shards",
+        "concurrency",
+        "name",
+        "working_dir",
+    )
     assert by_name["codex-fuzz-swarm-128"].example_name == "fuzz/fuzz_codex_128.yaml"
     assert "128-shard Codex fuzzing swarm" in by_name["codex-fuzz-swarm-128"].description
     assert by_name["local-kimi-smoke"].example_name == "local-real-agents-kimi-smoke.yaml"
@@ -90,6 +98,50 @@ def test_bundled_codex_fanout_repo_sweep_template_is_available():
 def test_bundled_codex_fuzz_matrix_template_is_available():
     assert "codex-fuzz-matrix" in bundled_template_names()
     assert "\nname: codex-fuzz-matrix\n" in f"\n{load_bundled_template_yaml('codex-fuzz-matrix')}"
+
+
+def test_bundled_codex_fuzz_swarm_template_is_available():
+    assert "codex-fuzz-swarm" in bundled_template_names()
+    assert "\nname: codex-fuzz-swarm-32\n" in f"\n{load_bundled_template_yaml('codex-fuzz-swarm')}"
+
+
+def test_bundled_codex_fuzz_swarm_template_matches_default_example_file():
+    expected = bundled_template_path("codex-fuzz-swarm").read_text(encoding="utf-8")
+
+    assert load_bundled_template_yaml("codex-fuzz-swarm") == expected
+
+
+def test_bundled_codex_fuzz_swarm_template_accepts_overrides_and_preserves_runtime_placeholders(tmp_path):
+    rendered = load_bundled_template_yaml(
+        "codex-fuzz-swarm",
+        values={
+            "shards": "128",
+            "concurrency": "24",
+            "name": "custom-fuzz-128",
+            "working_dir": "./custom_swarm",
+        },
+    )
+
+    assert "name: custom-fuzz-128\n" in rendered
+    assert "working_dir: ./custom_swarm\n" in rendered
+    assert "concurrency: 24\n" in rendered
+    assert "For each shard suffix from 000 through 127" in rendered
+    assert "count: 128" in rendered
+    assert "{{ shard.number }}" in rendered
+    assert "{{ pipeline.working_dir }}" in rendered
+    assert "{% for shard in fanouts.fuzzer.nodes %}" in rendered
+
+    pipeline_path = tmp_path / "custom-fuzz.yaml"
+    pipeline_path.write_text(rendered, encoding="utf-8")
+    pipeline = load_pipeline_from_path(str(pipeline_path))
+
+    assert pipeline.concurrency == 24
+    assert len(pipeline.fanouts["fuzzer"]) == 128
+    assert pipeline.fanouts["fuzzer"][:3] == ["fuzzer_000", "fuzzer_001", "fuzzer_002"]
+    assert pipeline.fanouts["fuzzer"][-1] == "fuzzer_127"
+    assert pipeline.node_map["merge"].depends_on[0] == "fuzzer_000"
+    assert pipeline.node_map["merge"].depends_on[-1] == "fuzzer_127"
+    assert "000 through 127" in pipeline.node_map["init"].prompt
 
 
 def test_bundled_codex_fuzz_matrix_pipeline_expands_value_fanout_nodes():

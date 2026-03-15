@@ -83,6 +83,16 @@ nodes:
       {% endfor %}
 ```
 
+For a practical swarm authoring workflow, scaffold a ready-made Codex fuzz swarm and then resize it instead of hand-editing the YAML from scratch:
+
+```bash
+agentflow init fuzz-swarm.yaml --template codex-fuzz-swarm
+agentflow init fuzz-128.yaml --template codex-fuzz-swarm --set shards=128 --set concurrency=32
+agentflow inspect fuzz-128.yaml --output summary
+```
+
+The checked-in [`examples/fuzz/fuzz_codex_32.yaml`](/home/shou/agentflow/examples/fuzz/fuzz_codex_32.yaml) file is the default 32-shard starter rendered by that template. [`examples/fuzz/fuzz_codex_128.yaml`](/home/shou/agentflow/examples/fuzz/fuzz_codex_128.yaml) remains the fixed large-fanout reference when you want to inspect a full 128-node spec directly from the repo.
+
 When each shard needs its own structured metadata, use `fanout.values` instead of `count`:
 
 ```yaml

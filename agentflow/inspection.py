@@ -524,8 +524,27 @@ def auth_summary_depends_on_local_shell_bootstrap(auth_summary: str | None) -> b
     return auth_summary.startswith("expects `") and "local shell bootstrap" in auth_summary
 
 
+def _inspection_target_uses_local_shell_bootstrap(node: dict[str, Any]) -> bool:
+    target = node.get("target")
+    if not isinstance(target, dict) or target.get("kind") != "local":
+        return False
+    if str(target.get("bootstrap") or "").strip():
+        return True
+    if bool(target.get("shell_login")) or bool(target.get("shell_interactive")):
+        return True
+    shell = target.get("shell")
+    if isinstance(shell, str) and shell.strip():
+        return True
+    shell_init = target.get("shell_init")
+    if isinstance(shell_init, str):
+        return bool(shell_init.strip())
+    if isinstance(shell_init, list):
+        return any(isinstance(command, str) and command.strip() for command in shell_init)
+    return False
+
+
 def inspection_node_auth_depends_on_local_shell_bootstrap(node: dict[str, Any]) -> bool:
-    return auth_summary_depends_on_local_shell_bootstrap(node.get("auth"))
+    return auth_summary_depends_on_local_shell_bootstrap(node.get("auth")) and _inspection_target_uses_local_shell_bootstrap(node)
 
 
 def _target_shell_bridge(

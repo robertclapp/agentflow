@@ -1018,6 +1018,12 @@ def build_pipeline_local_kimi_readiness_checks(pipeline: object) -> list[DoctorC
         if agent != AgentKind.KIMI.value:
             continue
 
+        provider = resolve_provider(_object_value(node, "provider"), AgentKind.KIMI)
+        api_key_env = str(_object_value(provider, "api_key_env") or "KIMI_API_KEY")
+        launch_env = merge_env_layers(_object_value(provider, "env"), _object_value(node, "env"))
+        if not str(launch_env.get(api_key_env) or os.getenv(api_key_env) or "").strip():
+            continue
+
         ready, probe_command, execution_note, failure_detail = _can_launch_local_kimi(node, pipeline)
         if ready:
             continue
@@ -1042,6 +1048,12 @@ def build_pipeline_local_kimi_readiness_info_checks(pipeline: object) -> list[Do
     checks: list[DoctorCheck] = []
     for node in _object_value(pipeline, "nodes", []) or []:
         if _prepared_kimi_readiness_execution(node, pipeline) is None:
+            continue
+
+        provider = resolve_provider(_object_value(node, "provider"), AgentKind.KIMI)
+        api_key_env = str(_object_value(provider, "api_key_env") or "KIMI_API_KEY")
+        launch_env = merge_env_layers(_object_value(provider, "env"), _object_value(node, "env"))
+        if not str(launch_env.get(api_key_env) or os.getenv(api_key_env) or "").strip():
             continue
 
         ready, probe_command, execution_note, failure_detail = _can_launch_local_kimi(node, pipeline)

@@ -54,7 +54,7 @@ from agentflow.local_shell import (
     target_uses_login_bash,
 )
 from agentflow.prepared import resolve_local_workdir
-from agentflow.specs import AgentKind, LocalTarget, provider_uses_kimi_anthropic_auth, resolve_provider
+from agentflow.specs import AgentKind, LocalTarget, PipelineSpec, provider_uses_kimi_anthropic_auth, resolve_provider
 
 app = typer.Typer(add_completion=False)
 
@@ -545,6 +545,9 @@ def _pipeline_launch_inspection_nodes(pipeline: object) -> list[dict[str, object
             runs_dir=str((Path.cwd() / ".agentflow" / "doctor").resolve()),
         )
     except Exception as exc:
+        if not isinstance(pipeline, PipelineSpec) and isinstance(exc, AttributeError):
+            _PIPELINE_LAUNCH_INSPECTION_ERRORS.pop(id(pipeline), None)
+            return []
         _PIPELINE_LAUNCH_INSPECTION_ERRORS[id(pipeline)] = _format_launch_inspection_error(exc)
         return []
     _PIPELINE_LAUNCH_INSPECTION_ERRORS.pop(id(pipeline), None)
@@ -1119,7 +1122,12 @@ def _coerce_local_target(target: object) -> LocalTarget | None:
         "shell_interactive": bool(_target_value(target, "shell_interactive", False)),
         "shell_init": _target_value(target, "shell_init"),
     }
-    return LocalTarget.model_validate(payload)
+    try:
+        return LocalTarget.model_validate(payload)
+    except ValidationError:
+        # Doctor/preflight helpers still need to reason about local shell wiring even when
+        # they are given an ad hoc pipeline-like object instead of a fully validated spec.
+        return LocalTarget.model_construct(**payload)
 
 
 def _local_target_launch_cwd(node: object, pipeline: object | None = None) -> Path | None:
@@ -1926,6 +1934,18 @@ def _resolve_inspection_output(output: InspectionOutputFormat) -> InspectionOutp
     return InspectionOutputFormat.JSON
 
 
+def _parse_template_settings(raw_settings: list[str] | None) -> dict[str, str]:
+    settings: dict[str, str] = {}
+    for raw_setting in raw_settings or []:
+        key, separator, value = raw_setting.partition("=")
+        if separator != "=" or not key or not value:
+            raise ValueError(f"template settings must use KEY=VALUE form, got `{raw_setting}`")
+        if key in settings:
+            raise ValueError(f"template setting `{key}` was provided more than once")
+        settings[key] = value
+    return settings
+
+
 @app.command()
 def serve(
     host: str = "127.0.0.1",
@@ -1947,9 +1967,18 @@ def validate(path: str) -> None:
 def templates() -> None:
     lines = ["Bundled templates:"]
     for template in bundled_templates():
+        details = [
+            f"source: `examples/{template.example_name}`",
+            f"use: `agentflow init --template {template.name}`",
+        ]
+        if template.parameters:
+            details.insert(
+                0,
+                "params: " + ", ".join(f"`{parameter.name}={parameter.default}`" for parameter in template.parameters),
+            )
         lines.append(
             f"- {template.name}: {template.description} "
-            f"(source: `examples/{template.example_name}`, use: `agentflow init --template {template.name}`)"
+            f"({'; '.join(details)})"
         )
     typer.echo("\n".join(lines))
 
@@ -1971,11 +2000,22 @@ def init(
         "--force",
         help="Overwrite an existing destination file.",
     ),
+    set_value: list[str] = typer.Option(
+        None,
+        "--set",
+        help="Template setting in KEY=VALUE form. Repeat to customize parameterized templates.",
+    ),
 ) -> None:
     try:
-        template_yaml = load_bundled_template_yaml(template)
+        template_settings = _parse_template_settings(set_value)
     except ValueError as exc:
-        raise typer.BadParameter(str(exc), param_hint="--template") from exc
+        raise typer.BadParameter(str(exc), param_hint="--set") from exc
+
+    try:
+        template_yaml = load_bundled_template_yaml(template, values=template_settings)
+    except ValueError as exc:
+        param_hint = "--template" if template not in bundled_template_names() else "--set"
+        raise typer.BadParameter(str(exc), param_hint=param_hint) from exc
 
     if path is None or path == "-":
         typer.echo(template_yaml, nl=False)
