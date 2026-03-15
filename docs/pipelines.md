@@ -31,30 +31,30 @@ spec = dag.to_spec()
 ```
 
 The Python helpers accept the same per-node kwargs as YAML, including `fanout`.
-Import `fanout_count(...)`, `fanout_values(...)`, `fanout_values_path(...)`, `fanout_matrix(...)`, `fanout_matrix_path(...)`, `fanout_group_by(...)`, or `fanout_batches(...)` when you want a Python-native way to build those fanout payloads instead of writing raw dictionaries inline.
-`DAG(...)` also accepts `fail_fast`, `node_defaults`, `agent_defaults`, and `local_target_defaults`, so large swarms can keep shared launch policy in one place instead of repeating it on every node.
-Use `dag.to_json()` or `dag.to_yaml()` when you want to serialize that Python-authored DAG into a compact runnable pipeline without losing fanout directives; use `dag.to_payload()` if another tool needs the raw object structure, and use `dag.to_spec()` when you want the fully expanded, validated pipeline object in memory.
+Import `fanout_count(...)`, `fanout_values(...)`, `fanout_values_path(...)`, `fanout_matrix(...)`, `fanout_matrix_path(...)`, `fanout_group_by(...)`, or `fanout_batches(...)` when you want Python-native fanout payloads instead of raw dictionaries.
+`DAG(...)` also accepts `fail_fast`, `node_defaults`, `agent_defaults`, and `local_target_defaults`.
+Use `dag.to_json()` or `dag.to_yaml()` to serialize a compact runnable pipeline, `dag.to_payload()` for the raw object structure, and `dag.to_spec()` for the fully expanded in-memory pipeline object.
 
-See `examples/airflow_like.py` for the small static DAG, `examples/airflow_like_fuzz_batched.py` for a runnable 128-shard Codex swarm that uses `fanout.batches` plus pipeline defaults, and `examples/airflow_like_fuzz_catalog_batched.py` for the path-backed CSV catalog variant that uses `fanout_values_path(...)`, `fanout_batches(...)`, and `dag.to_yaml()`.
+See `examples/airflow_like.py` for the small static DAG. `examples/airflow_like_fuzz_batched.py` and `examples/airflow_like_fuzz_grouped.py` remain in the repo as advanced fanout examples only.
 
 ## Pipeline schema
 
 Each node supports:
 
 - `agent`: `codex`, `claude`, or `kimi`
-- `fanout`: expand one node definition into concrete nodes before validation; accepts `count`, `values`, `values_path`, `matrix`, `matrix_path`, `preset`, `group_by`, or `batches`, plus optional `as`, `derive`, and matrix-only `include` / `exclude`
+- `fanout`: `count`, `values`, `values_path`, `matrix`, `matrix_path`, `group_by`, or `batches`, plus optional `as`, `derive`, and matrix-only `include` / `exclude`
 - `model`: any model string understood by the backend
 - `provider`: a string or a structured provider config with `base_url`, `api_key_env`, headers, and env
 - `tools`: `read_only` or `read_write`
 - `mcps`: a list of MCP server definitions
 - `skills`: a list of local skill paths or names
 - `target`: `local`, `container`, or `aws_lambda`
-- local working-dir and shell bootstrap fields: `cwd`, `bootstrap`, `shell`, `shell_login`, `shell_interactive`, and `shell_init`
+- local target fields: `cwd`, `bootstrap`, `shell`, `shell_login`, `shell_interactive`, and `shell_init`
 - `capture`: `final` or `trace`
 - `retries` and `retry_backoff_seconds`
 - `success_criteria`: output or filesystem checks evaluated after execution
 
-Skill entries are resolved from the pipeline `working_dir`. You can point `skills:` at a plain file, a `.md` file, a home-relative path such as `~/.codex/skills/release-skill`, or a directory that contains `SKILL.md`, which keeps reusable local skill bundles easy to share across Codex, Claude, and Kimi nodes.
+Skill entries are resolved from the pipeline `working_dir`. You can point `skills:` at a plain file, a `.md` file, a home-relative path such as `~/.codex/skills/release-skill`, or a directory that contains `SKILL.md`.
 
 Top-level pipeline controls include:
 
@@ -63,7 +63,7 @@ Top-level pipeline controls include:
 - `node_defaults`: shared node fields merged into every node before validation
 - `agent_defaults`: agent-specific shared node fields keyed by `codex`, `claude`, or `kimi`
 
-`node_defaults` is the pipeline-wide baseline. `agent_defaults` is the agent-specific override layer. Explicit node values always win, so large swarms can centralize `agent`, `model`, `tools`, retries, or shared shell wrappers without hiding node-specific prompts and dependencies.
+`node_defaults` is the pipeline-wide baseline. `agent_defaults` is the agent-specific override layer. Explicit node values always win.
 
 ```yaml
 node_defaults:
@@ -84,329 +84,202 @@ agent_defaults:
 
 ## Fan-out nodes
 
-Use `fanout` when a DAG needs many nearly identical nodes, such as repository sweeps, fuzzing swarms, or shardable audits.
-AgentFlow expands those nodes into an ordinary concrete DAG before validation and execution, so the orchestrator, runners, and persisted runs still operate on normal node ids.
+Use `fanout` when a DAG needs many nearly identical nodes, such as repository sweeps, release checklists, or shardable audits. AgentFlow expands those nodes into an ordinary concrete DAG before validation and execution.
+
+For uniform work, use `fanout.count`:
 
 ```yaml
 nodes:
-  - id: fuzz
+  - id: review
     fanout:
       count: 8
       as: shard
     agent: codex
     prompt: |
       You are shard {{ shard.number }} of {{ shard.count }}.
-      Use suffix {{ shard.suffix }} for any per-shard paths or seeds.
+      Use suffix {{ shard.suffix }} for any per-shard paths.
 
   - id: merge
     agent: codex
-    depends_on: [fuzz]
+    depends_on: [review]
     prompt: |
-      {% for shard in fanouts.fuzz.nodes %}
+      {% for shard in fanouts.review.nodes %}
       ## {{ shard.id }}
       {{ shard.output or "(no output)" }}
 
       {% endfor %}
 ```
 
-For a practical swarm authoring workflow, scaffold a ready-made Codex fuzz swarm and then resize it instead of hand-editing the YAML from scratch:
+For scaffolds, start with one of the bundled templates:
 
 ```bash
-agentflow init fuzz-swarm.yaml --template codex-fuzz-swarm
-agentflow init fuzz-128.yaml --template codex-fuzz-swarm --set shards=128 --set concurrency=32
+agentflow init > pipeline.yaml
+agentflow init repo-sweep.yaml --template codex-fanout-repo-sweep
 agentflow init repo-sweep-batched.yaml --template codex-repo-sweep-batched
-agentflow init fuzz-hierarchical-grouped.yaml --template codex-fuzz-hierarchical-grouped
-agentflow init fuzz-hierarchical-grouped-128.yaml --template codex-fuzz-hierarchical-grouped --set shards=128 --set concurrency=32
-agentflow init fuzz-hierarchical.yaml --template codex-fuzz-hierarchical-manifest
-agentflow init fuzz-hierarchical-128.yaml --template codex-fuzz-hierarchical-manifest --set shards=128 --set concurrency=32
-agentflow init fuzz-hierarchical-128.yaml --template codex-fuzz-hierarchical-128
-agentflow init fuzz-campaign.yaml --template codex-fuzz-campaign
-agentflow init fuzz-campaign-grouped.yaml --template codex-fuzz-campaign --set preset=browser-surface --set layout=grouped
-agentflow init fuzz-preset-batched.yaml --template codex-fuzz-preset-batched
-agentflow init fuzz-catalog.yaml --template codex-fuzz-catalog
-agentflow init fuzz-catalog-batched.yaml --template codex-fuzz-catalog-batched
-agentflow init fuzz-catalog-grouped.yaml --template codex-fuzz-catalog-grouped
-agentflow init fuzz-batched.yaml --template codex-fuzz-batched
-agentflow inspect fuzz-128.yaml --output summary
 ```
 
-The checked-in [`examples/fuzz/fuzz_codex_32.yaml`](/home/shou/agentflow/examples/fuzz/fuzz_codex_32.yaml) file is the default 32-shard starter rendered by that template. [`examples/codex-repo-sweep-batched.yaml`](/home/shou/agentflow/examples/codex-repo-sweep-batched.yaml) is the parallel maintainer-review counterpart when you want a large non-fuzz Codex sweep with `node_defaults`, `agent_defaults`, and `fanout.batches`. [`examples/fuzz/fuzz_codex_128.yaml`](/home/shou/agentflow/examples/fuzz/fuzz_codex_128.yaml) remains the fixed large-fanout reference when you want to inspect a full 128-node spec directly from the repo. When you want the shortest preset-backed 64/128-shard starter without choosing among multiple near-duplicate YAML patterns first, start from [`examples/fuzz/codex-fuzz-campaign.yaml`](/home/shou/agentflow/examples/fuzz/codex-fuzz-campaign.yaml) or `agentflow init fuzz-campaign.yaml --template codex-fuzz-campaign`; switch between `flat`, `batched`, and `grouped` with `--set layout=...`. When you want the same 128-shard scale with the axis catalog split into a support file, inspect [`examples/fuzz/codex-fuzz-matrix-manifest-128.yaml`](/home/shou/agentflow/examples/fuzz/codex-fuzz-matrix-manifest-128.yaml). When that roster already matches one of AgentFlow's built-in fuzz campaign presets and you want the same staged-reducer shape without sidecar manifests but still want to study the lower-level inline pattern, start from [`examples/fuzz/codex-fuzz-preset-batched.yaml`](/home/shou/agentflow/examples/fuzz/codex-fuzz-preset-batched.yaml) or `agentflow init fuzz-preset-batched.yaml --template codex-fuzz-preset-batched`.
-When that same staged-reducer pattern should stay maintainable and the reducer roster can be derived from shard metadata already in the fanout, start from [`examples/fuzz/codex-fuzz-hierarchical-grouped.yaml`](/home/shou/agentflow/examples/fuzz/codex-fuzz-hierarchical-grouped.yaml) or `agentflow init fuzz-hierarchical-grouped.yaml --template codex-fuzz-hierarchical-grouped`, which keep only the shard axes manifest and derive per-family reducers through `fanout.group_by`; each grouped reducer now gets scoped dependencies plus `current.member_ids` and `current.members`, so it can summarize only its matching shard family without re-filtering the full fanout. Raise `--set shards=128 --set concurrency=32` when you want that same sidecar-manifest pattern at 128 shards without hand-editing a second roster file. When reducers need an explicitly maintainer-owned roster that can diverge from the shard axes, start from [`examples/fuzz/codex-fuzz-hierarchical-manifest.yaml`](/home/shou/agentflow/examples/fuzz/codex-fuzz-hierarchical-manifest.yaml) or `agentflow init fuzz-hierarchical.yaml --template codex-fuzz-hierarchical-manifest`, which render both the shard axes manifest and the family reducer roster from one scaffold. [`examples/fuzz/codex-fuzz-hierarchical-128.yaml`](/home/shou/agentflow/examples/fuzz/codex-fuzz-hierarchical-128.yaml) remains the fixed 128-shard staged reducer reference that summarizes each target family before the final maintainer merge by using the `fanouts.<group>.summary`, `completed`, `failed`, and `with_output` prompt helpers. When a homogeneous 128-shard swarm wants the same readability without a second family roster, start from [`examples/fuzz/codex-fuzz-batched.yaml`](/home/shou/agentflow/examples/fuzz/codex-fuzz-batched.yaml) or `agentflow init fuzz-batched.yaml --template codex-fuzz-batched`, which use `fanout.batches` to insert scoped intermediate reducers automatically. When the same neutral staged-reducer pattern should start from a spreadsheet-friendly shard catalog instead of a homogeneous swarm, use [`examples/fuzz/codex-fuzz-catalog-batched.yaml`](/home/shou/agentflow/examples/fuzz/codex-fuzz-catalog-batched.yaml) or `agentflow init fuzz-catalog-batched.yaml --template codex-fuzz-catalog-batched`. The manifest-backed single-reducer scaffold still lives at [`examples/fuzz/codex-fuzz-matrix-manifest.yaml`](/home/shou/agentflow/examples/fuzz/codex-fuzz-matrix-manifest.yaml) and is the default output of `agentflow init fuzz-matrix-manifest.yaml --template codex-fuzz-matrix-manifest`. When the same staged-reducer flow should start from a spreadsheet-friendly shard catalog instead of reusable axes and reducer families do matter, use [`examples/fuzz/codex-fuzz-catalog-grouped.yaml`](/home/shou/agentflow/examples/fuzz/codex-fuzz-catalog-grouped.yaml) or `agentflow init fuzz-catalog-grouped.yaml --template codex-fuzz-catalog-grouped`.
+The bundled repo sweep examples are [`examples/codex-fanout-repo-sweep.yaml`](/home/shou/agentflow/examples/codex-fanout-repo-sweep.yaml) and [`examples/codex-repo-sweep-batched.yaml`](/home/shou/agentflow/examples/codex-repo-sweep-batched.yaml). The repository also keeps [`examples/airflow_like_fuzz_batched.py`](/home/shou/agentflow/examples/airflow_like_fuzz_batched.py) and [`examples/airflow_like_fuzz_grouped.py`](/home/shou/agentflow/examples/airflow_like_fuzz_grouped.py) as advanced examples only.
 
-When each shard needs its own structured metadata, use `fanout.values` instead of `count`:
+When each member needs explicit metadata, use `fanout.values`:
 
 ```yaml
 nodes:
-  - id: fuzz
+  - id: review
     fanout:
       as: shard
       values:
-        - target: libpng
-          sanitizer: asan
-          seed: 1101
-        - target: sqlite
-          sanitizer: ubsan
-          seed: 2202
+        - repo: api
+          owner: platform
+          priority: high
+        - repo: billing
+          owner: payments
+          priority: medium
     agent: codex
     prompt: |
-      Fuzz {{ shard.target }} with {{ shard.sanitizer }} using seed {{ shard.seed }}.
+      Review {{ shard.repo }} for {{ shard.owner }} (priority: {{ shard.priority }}).
 ```
 
-When you need reusable computed shard metadata such as labels, workdirs, or report paths, add `fanout.derive`. AgentFlow renders those fields during fan-out expansion and preserves them everywhere the member metadata is exposed.
+When the metadata is naturally multi-axis, use `fanout.matrix`. Add `fanout.exclude` and `fanout.include` when a cartesian product needs a few curated adjustments:
 
 ```yaml
 nodes:
-  - id: fuzz
+  - id: review
     fanout:
       as: shard
       matrix:
-        family:
-          - target: libpng
-          - target: sqlite
-        variant:
-          - sanitizer: asan
-            seed: 1101
-          - sanitizer: ubsan
-            seed: 2202
-      derive:
-        label: "{{ shard.target }}/{{ shard.sanitizer }}/{{ shard.seed }}"
-        workspace: "agents/{{ shard.target }}_{{ shard.sanitizer }}_{{ shard.suffix }}"
+        repo:
+          - name: api
+            owner: platform
+          - name: billing
+            owner: payments
+        check:
+          - kind: security
+          - kind: docs
+      exclude:
+        - name: billing
+          kind: docs
+      include:
+        - repo:
+            name: marketing
+            owner: growth
+          check:
+            kind: docs
     agent: codex
-    target:
-      kind: local
-      cwd: "{{ shard.workspace }}"
     prompt: |
-      Fuzz {{ shard.label }} inside {{ shard.workspace }}.
+      Run the {{ shard.kind }} review for {{ shard.name }}.
 ```
 
-When the shard roster already matches a built-in fuzz campaign preset such as `browser-surface` or `protocol-stack`, use `fanout.preset` to expand that matrix directly in YAML without rendering a sidecar manifest first:
+When prompts and workdirs should share computed fields, add `fanout.derive`:
 
 ```yaml
 nodes:
-  - id: fuzz
+  - id: review
     fanout:
       as: shard
-      preset:
-        name: browser-surface
-        shards: 128
+      matrix:
+        repo:
+          - name: api
+          - name: billing
+        check:
+          - kind: security
+          - kind: docs
+      derive:
+        label: "{{ shard.name }}/{{ shard.kind }}"
+        workspace: "agents/{{ shard.name }}_{{ shard.kind }}_{{ shard.suffix }}"
     agent: codex
     target:
       kind: local
       cwd: "{{ shard.workspace }}"
     prompt: |
-      Fuzz {{ shard.label }} inside {{ shard.workspace }}.
+      Work in {{ shard.workspace }} and summarize {{ shard.label }}.
 ```
 
-`fanout.preset` expands the same family/strategy/seed-bucket roster as `codex_fuzz_campaign_matrix(...)`, including default `label` and `workspace` fields. Prefer `shards=` when you know the target campaign size you want; `agentflow template-presets` now shows the supported shard multiples each preset accepts, and `bucket_count=` remains available when you explicitly want to think in seed buckets. Outer `include` / `exclude` curation still applies after that preset expansion, so curated rosters can end up smaller than the requested preset multiple. Add outer `fanout.derive` when you want to override or extend those computed values, and pair it with `fanout.batches` when 128-shard runs should stay readable in a single YAML file. The bundled [`examples/fuzz/codex-fuzz-campaign.yaml`](/home/shou/agentflow/examples/fuzz/codex-fuzz-campaign.yaml) scaffold is now the easiest helper-backed starter for this path, while [`examples/fuzz/codex-fuzz-preset-batched.yaml`](/home/shou/agentflow/examples/fuzz/codex-fuzz-preset-batched.yaml) remains the lower-level inline reference.
-
-The Python DSL now exposes the matching `fanout_preset(...)` helper, so you can keep preset-backed DAGs in Python without materializing the matrix axes yourself:
-
-```python
-from agentflow import fanout_preset
-
-fanout = fanout_preset(
-    preset="browser-surface",
-    shards=128,
-    as_="shard",
-)
-```
-
-Use `extra_axes={...}` when the reusable preset needs one more dimension, and layer outer `derive={...}` on top when that new axis should participate in `label`, `workspace`, or reducer-specific fields.
-
-For large fan-outs, prompt rendering also exposes reducer-friendly fanout subsets and counts. `fanouts.<group>.summary` carries per-status totals plus `with_output` / `without_output`, while `fanouts.<group>.completed`, `failed`, `with_output`, and `without_output` each expose the same `ids`, `size`, `nodes`, `outputs`, `final_responses`, `statuses`, and `values` fields as the full group.
+When the roster should live outside the pipeline file, use `fanout.values_path` or `fanout.matrix_path`. `values_path` accepts JSON/YAML lists and CSV rows. `matrix_path` accepts JSON/YAML objects. Relative paths resolve from the pipeline file.
 
 ```yaml
 nodes:
-  - id: family_merge
+  - id: review
     fanout:
-      as: family
-      values:
-        - target: libpng
-        - target: sqlite
-    depends_on: [fuzz]
+      as: shard
+      values_path: manifests/repos.yaml
+    agent: codex
     prompt: |
-      {% set target_outputs = fanouts.fuzz.with_output.nodes | selectattr("target", "equalto", current.target) | list %}
-      Completed shards: {{ fanouts.fuzz.summary.completed }}
-      Failed shards: {{ fanouts.fuzz.summary.failed }}
+      Review {{ shard.repo }} for {{ shard.owner }}.
+```
 
-      {% for shard in target_outputs %}
-      ## {{ shard.label }} :: {{ shard.id }}
+When reducers should follow fields already present on another fanout, use `fanout.group_by`:
+
+```yaml
+nodes:
+  - id: review
+    fanout:
+      as: shard
+      values_path: manifests/repos.yaml
+    agent: codex
+    prompt: |
+      Review {{ shard.repo }} for {{ shard.owner }}.
+
+  - id: owner_merge
+    fanout:
+      as: owner
+      group_by:
+        from: review
+        fields: [owner]
+    agent: codex
+    depends_on: [review]
+    prompt: |
+      Reduce {{ current.owner }} with {{ current.member_ids | length }} scoped inputs.
+
+      {% for shard in current.scope.with_output.nodes %}
+      ## {{ shard.node_id }} :: {{ shard.repo }}
       {{ shard.output }}
 
       {% endfor %}
 ```
 
-When runtime Jinja needs the current fanout member itself, use `current.*`. It exposes the active node id, agent, dependencies, and lifted fanout metadata, so reducers can filter `fanouts.*` or index into `nodes[...]` without the older placeholder-freezing workaround.
-
-When the reducer roster should come directly from another fanout's unique member fields, use `fanout.group_by` instead of maintaining a second `values` list:
+When one final reducer would be too noisy, use `fanout.batches`:
 
 ```yaml
 nodes:
-  - id: fuzz
-    fanout:
-      as: shard
-      matrix_path: manifests/campaign.axes.yaml
-    agent: codex
-    prompt: |
-      Fuzz {{ shard.target }} with {{ shard.sanitizer }} using seed {{ shard.seed }}.
-
-  - id: family_merge
-    fanout:
-      as: family
-      group_by:
-        from: fuzz
-        fields: [target, corpus]
-    agent: codex
-    depends_on: [fuzz]
-    prompt: |
-      Reduce {{ current.target }} with {{ current.member_ids | length }} scoped shard inputs.
-
-      {% for shard in current.members %}
-      ## {{ shard.node_id }} :: {{ shard.target }} / {{ shard.sanitizer }} / {{ shard.seed }}
-      {{ nodes[shard.node_id].output or "(no output)" }}
-
-      {% endfor %}
-```
-
-`fanout.group_by` preserves first-seen order from the source fanout and works with lifted matrix fields such as `target` plus derived fields you computed on the source members. Grouped reducers now also get `current.member_ids`, `current.members`, and scoped dependencies that point only at the matching source shards.
-
-When a homogeneous swarm needs intermediate reducers without maintaining a second roster, use `fanout.batches`. Each batch reducer gets `current.member_ids`, `current.members`, and scoped dependencies that point only at that batch's shard nodes:
-
-```yaml
-nodes:
-  - id: fuzz
+  - id: review
     fanout:
       count: 128
       as: shard
       derive:
-        workspace: "agents/agent_{{ shard.suffix }}"
+        workspace: "agents/review_{{ shard.suffix }}"
 
   - id: batch_merge
     fanout:
       as: batch
       batches:
-        from: fuzz
+        from: review
         size: 16
-    depends_on: [fuzz]
+    depends_on: [review]
     prompt: |
       Reduce shards {{ current.start_number }} through {{ current.end_number }}.
 
-      {% for shard in current.members %}
-      ## {{ shard.node_id }} (status: {{ nodes[shard.node_id].status }})
-      {{ nodes[shard.node_id].output or "(no output)" }}
+      {% for shard in current.scope.with_output.nodes %}
+      ## {{ shard.node_id }} (status: {{ shard.status }})
+      {{ shard.output }}
 
       {% endfor %}
 ```
 
-The bundled [`examples/fuzz/codex-fuzz-batched.yaml`](/home/shou/agentflow/examples/fuzz/codex-fuzz-batched.yaml) example and `agentflow init fuzz-batched.yaml --template codex-fuzz-batched` scaffold use that pattern so a large homogeneous Codex swarm stays maintainable without hand-writing a second reducer roster. When the source fanout is a spreadsheet-friendly shard catalog instead of a homogeneous count fanout, the bundled [`examples/fuzz/codex-fuzz-catalog-batched.yaml`](/home/shou/agentflow/examples/fuzz/codex-fuzz-catalog-batched.yaml) example and `agentflow init fuzz-catalog-batched.yaml --template codex-fuzz-catalog-batched` scaffold apply the same `fanout.batches` reducer shape to explicit per-row metadata.
-
-When a mostly-regular matrix needs a few real-world adjustments, keep the reusable axes and add `fanout.exclude` plus `fanout.include` before moving all the way to a CSV catalog:
-
-```yaml
-nodes:
-  - id: fuzz
-    fanout:
-      as: shard
-      matrix:
-        family:
-          - target: libpng
-          - target: sqlite
-        strategy:
-          - sanitizer: asan
-            focus: parser
-          - sanitizer: ubsan
-            focus: stateful
-      exclude:
-        - target: sqlite
-          focus: stateful
-      include:
-        - family:
-            target: openssl
-          strategy:
-            sanitizer: asan
-            focus: handshake
-      derive:
-        label: "{{ shard.target }}/{{ shard.sanitizer }}/{{ shard.focus }}"
-```
-
-When that metadata already lives in a maintainer-owned file, point `fanout.values_path` or `fanout.matrix_path` at it instead of inlining the whole catalog in the pipeline. `values_path` accepts JSON/YAML lists and CSV rows; `matrix_path` accepts JSON/YAML objects with axis lists. Relative paths resolve from the pipeline file, not from `working_dir`.
-
-```yaml
-nodes:
-  - id: fuzz
-    fanout:
-      as: shard
-      values_path: manifests/shards.csv
-    agent: codex
-    prompt: |
-      Fuzz {{ shard.target }} with seed {{ shard.seed }}.
-```
-
-The bundled [`examples/fuzz/codex-fuzz-matrix-manifest.yaml`](/home/shou/agentflow/examples/fuzz/codex-fuzz-matrix-manifest.yaml) example and `agentflow init fuzz-matrix-manifest.yaml --template codex-fuzz-matrix-manifest` scaffold use that `matrix_path` pattern with reusable axes plus derived labels/workdirs. Scale the same template to 128 shards with `agentflow init fuzz-matrix-manifest-128.yaml --template codex-fuzz-matrix-manifest --set shards=128 --set concurrency=32`. When you want the same externalized metadata pattern plus staged reducers derived directly from the shard fanout, the bundled [`examples/fuzz/codex-fuzz-hierarchical-grouped.yaml`](/home/shou/agentflow/examples/fuzz/codex-fuzz-hierarchical-grouped.yaml) example and `agentflow init fuzz-hierarchical-grouped.yaml --template codex-fuzz-hierarchical-grouped` scaffold pair `matrix_path` with `fanout.group_by`, so the reducer targets stay aligned with the same maintainer-owned axes file and each reducer receives only the matching shard ids and members. When you need staged reducers with an explicit roster that can diverge from those axes, the bundled [`examples/fuzz/codex-fuzz-hierarchical-manifest.yaml`](/home/shou/agentflow/examples/fuzz/codex-fuzz-hierarchical-manifest.yaml) example and `agentflow init fuzz-hierarchical.yaml --template codex-fuzz-hierarchical-manifest` scaffold still pair `matrix_path` with a `values_path` family roster.
-
-CSV-backed `values_path` catalogs are a good fit when each shard genuinely needs explicit per-row metadata that cannot be derived cleanly from reusable axes. The bundled [`examples/fuzz/codex-fuzz-catalog.yaml`](/home/shou/agentflow/examples/fuzz/codex-fuzz-catalog.yaml) example and `agentflow init fuzz-catalog.yaml --template codex-fuzz-catalog` scaffold both use that pattern so a large 128-shard campaign can be retargeted by editing [`examples/fuzz/manifests/codex-fuzz-catalog.csv`](/home/shou/agentflow/examples/fuzz/manifests/codex-fuzz-catalog.csv) instead of touching the reducer or launch settings. When those same catalog rows need neutral staged reducers without a meaningful family field to group on, start from [`examples/fuzz/codex-fuzz-catalog-batched.yaml`](/home/shou/agentflow/examples/fuzz/codex-fuzz-catalog-batched.yaml) or `agentflow init fuzz-catalog-batched.yaml --template codex-fuzz-catalog-batched`, which pair `values_path` with `fanout.batches`. When the same catalog rows should feed family-aware staged reducers automatically, start from [`examples/fuzz/codex-fuzz-catalog-grouped.yaml`](/home/shou/agentflow/examples/fuzz/codex-fuzz-catalog-grouped.yaml) or `agentflow init fuzz-catalog-grouped.yaml --template codex-fuzz-catalog-grouped`, which pair `values_path` with `fanout.group_by`.
-
-```yaml
-nodes:
-  - id: fuzz
-    fanout:
-      as: shard
-      matrix_path: manifests/campaign.axes.yaml
-    agent: codex
-    prompt: |
-      Fuzz {{ shard.target }} with {{ shard.sanitizer }} using seed {{ shard.seed }}.
-```
-
-When the metadata is naturally multi-axis, use `fanout.matrix` so AgentFlow builds the cartesian product for you:
-
-```yaml
-nodes:
-  - id: fuzz
-    fanout:
-      as: shard
-      matrix:
-        family:
-          - target: libpng
-            corpus: png
-          - target: sqlite
-            corpus: sql
-        variant:
-          - sanitizer: asan
-            seed: 1101
-          - sanitizer: ubsan
-            seed: 2202
-    agent: codex
-    prompt: |
-      Fuzz {{ shard.target }} with {{ shard.sanitizer }} using seed {{ shard.seed }}.
-
-  - id: merge
-    agent: codex
-    depends_on: [fuzz]
-    prompt: |
-      {% for shard in fanouts.fuzz.nodes %}
-      ## {{ shard.id }} :: {{ shard.target }} / {{ shard.sanitizer }} / {{ shard.seed }}
-      {{ shard.output or "(no output)" }}
-
-      {% endfor %}
-```
+Prompt rendering exposes `fanouts.<group>.nodes`, `outputs`, `values`, `summary`, `completed`, `failed`, `with_output`, and `without_output`. Reducers created from `fanout.group_by` or `fanout.batches` also get `current.member_ids`, `current.members`, and `current.scope`.
 
 Expansion rules:
 
-- A fan-out node accepts exactly one expansion mode: `count` for homogeneous numeric shards, `values` or `values_path` for explicit per-member metadata, `matrix` or `matrix_path` for cartesian-product sweeps, or `preset` for built-in fuzz campaign rosters.
-- A fan-out node with `id: fuzz` and `count: 8` expands to `fuzz_0` through `fuzz_7`. The suffix is zero-padded when the fan-out size needs it, so `count: 128` becomes `fuzz_000` through `fuzz_127`.
-- When `fanout.values` is used, `count` becomes the list length, `value` holds the raw item, and dictionary item keys with identifier-friendly names are also exposed directly on the alias. That lets `{{ shard.value.seed }}` and `{{ shard.seed }}` both work for `values: [{seed: 1101}]`.
-- `fanout.values_path` behaves the same way after AgentFlow loads the referenced list or CSV rows.
-- When `fanout.matrix` is used, AgentFlow expands the cartesian product of every axis in declaration order. Each axis item is available under its axis name, and dictionary axis items also lift their identifier-friendly keys onto the alias. That lets `{{ shard.family.target }}` and `{{ shard.target }}` both work when `family` axis items are dictionaries.
-- `fanout.matrix_path` behaves the same way after AgentFlow loads the referenced JSON/YAML object.
-- `fanout.preset` expands the built-in family/strategy/seed-bucket roster for the selected fuzz campaign preset and injects the same default `label` / `workspace` fields that `codex_fuzz_campaign_matrix(...)` would generate.
-- `fanout.exclude` removes matrix members whose metadata matches every field in a selector object. Selectors can match lifted fields such as `target` / `focus` or nested axis objects such as `family.target`.
-- `fanout.include` appends explicit matrix-style members after exclusions, which is useful for bespoke shards or for adding back one-off combinations without rewriting the whole campaign as a catalog.
-- `fanout.derive` can add computed member fields after the base `count`, `values`, `values_path`, `matrix`, `matrix_path`, or `preset` expansion has been resolved. Derived fields render in declaration order, so later derived fields can reference earlier ones.
-- `fanout.as` picks the template variable name for pre-validation substitution. AgentFlow currently expands dotted placeholders rooted at that alias or `fanout`, such as `{{ shard.number }}`, `{{ shard.suffix }}`, `{{ fanout.count }}`, `target.cwd: agents/agent_{{ shard.suffix }}`, or `depends_on: ["prepare_{{ shard.suffix }}"]`.
+- A fan-out node accepts exactly one expansion mode: `count`, `values`, `values_path`, `matrix`, `matrix_path`, `group_by`, or `batches`.
+- A fan-out node with `id: review` and `count: 8` expands to `review_0` through `review_7`. The suffix is zero-padded when needed.
+- `fanout.values` and `fanout.values_path` lift identifier-friendly dictionary keys onto the alias.
+- `fanout.matrix` and `fanout.matrix_path` expand the cartesian product in declaration order. Axis dictionaries are available both under the axis name and as lifted keys.
+- `fanout.group_by` creates one reducer member per unique field combination from the source fanout, in first-seen order.
+- `fanout.batches` partitions a source fanout into fixed-size reducer groups.
+- `fanout.exclude` removes matrix members whose metadata matches every field in a selector object. `fanout.include` appends explicit members after exclusions.
+- `fanout.derive` adds computed fields after the base expansion is resolved. Derived fields render in declaration order.
+- `fanout.as` picks the template variable name for pre-validation substitution.
 - Ordinary runtime prompt templates such as `{{ nodes.prepare.output }}` are left intact and still render at execution time.
-- A downstream `depends_on: [fuzz]` expands to all members of the `fuzz` group.
-- During prompt rendering, `fanouts.<group>.nodes` exposes the grouped member outputs with `id`, `status`, `output`, `final_response`, `stdout`, `stderr`, `trace`, and any preserved fanout member metadata such as `value`, `suffix`, `target`, `seed`, `workspace`, or `label`, plus convenience lists such as `fanouts.<group>.outputs` and `fanouts.<group>.values`.
-- Prompt rendering also exposes reducer-friendly subsets: `fanouts.<group>.summary` includes per-status totals plus `with_output` / `without_output`, `fanouts.<group>.status_counts` provides the raw mapping, and `fanouts.<group>.completed`, `failed`, `running`, `pending`, `queued`, `ready`, `retrying`, `cancelled`, `skipped`, `with_output`, and `without_output` each provide the same `ids` / `size` / `nodes` shape as the full group.
+- A downstream `depends_on: [review]` expands to all members of the `review` group.
 
 Runtime numeric settings are validated up front: `concurrency` must be at least `1`, `timeout_seconds` must be greater than `0`, and both `retries` and `retry_backoff_seconds` must be non-negative.
 
@@ -420,24 +293,17 @@ Built-in provider shorthands:
 
 `provider: kimi` is intentionally rejected on `codex` nodes. Codex requires an OpenAI Responses API backend, and Kimi's public endpoints do not expose `/responses`.
 
-When both `provider.env` and `node.env` define the same variable, `node.env` wins. That keeps per-node overrides aligned with the values `agentflow doctor`, `inspect`, and the actual launch environment use.
-For Claude-compatible Kimi setups, that same effective-env rule also means `doctor` and `inspect` recognize custom providers that set `ANTHROPIC_BASE_URL=https://api.kimi.com/coding/` in `provider.env`, even when `provider.base_url` is omitted.
+When both `provider.env` and `node.env` define the same variable, `node.env` wins. For Claude-compatible Kimi setups, `doctor` and `inspect` also recognize providers that set `ANTHROPIC_BASE_URL=https://api.kimi.com/coding/` in `provider.env` even when `provider.base_url` is omitted.
 
 ## Execution targets
 
 ### Local
 
-Runs the prepared agent command directly on the host. Set `target.shell` to wrap the command in a specific shell, such as `bash -lc`. If you provide a shell name without an explicit command flag, AgentFlow uses `-c` by default; opt into startup file loading with `shell_login: true` and `shell_interactive: true`. You can also use a `{command}` placeholder in the shell string to run shell bootstrap steps before the prepared agent command.
+Runs the prepared agent command directly on the host. Set `target.shell` to wrap the command in a specific shell, such as `bash -lc`. If you provide a shell name without an explicit command flag, AgentFlow uses `-c` by default. Opt into startup file loading with `shell_login: true` and `shell_interactive: true`.
 
-That default `-c` behavior applies to `{command}` templates too, so wrappers such as `env FOO=bar bash {command}` work without needing to spell `-c` manually.
-When the wrapper starts with `env -i`, AgentFlow now preserves the prepared launch env by inlining those variables into the `env` command itself, and it still applies `shell_login` / `shell_interactive` to the real shell executable rather than mistaking wrapper flags such as `env -i` for shell flags.
-For Bash specifically, use `-c` and either `-i` or `shell_interactive: true`; Bash accepts `--login`, but not `--command` or `--interactive`, and AgentFlow now rejects those invalid wrappers during validation instead of failing later at launch time.
+`target.cwd` controls the local node working directory. Absolute paths are used as-is; relative paths are resolved from the pipeline `working_dir`. AgentFlow creates that directory right before launch when it does not already exist.
 
-`target.cwd` controls the local node working directory. Absolute paths are used as-is; relative paths are resolved from the pipeline `working_dir`. AgentFlow creates that local directory right before launch when it does not already exist, which keeps fan-out shard workdirs easy to derive without adding manual bootstrap steps. File-based success criteria such as `file_exists`, `file_contains`, and `file_nonempty` are evaluated from that resolved local node working directory.
-
-The local-shell bootstrap fields `shell_login`, `shell_interactive`, and `shell_init` require `target.shell`. For the common Kimi helper case, `target.bootstrap: kimi` expands to the same `bash` + login + interactive + `shell_init` setup automatically.
-
-For common shell helper workflows, you can keep the config declarative instead of hand-writing a quoted shell template:
+The local bootstrap fields `shell_login`, `shell_interactive`, and `shell_init` require `target.shell`. For the common Kimi helper case, `target.bootstrap: kimi` expands to the same `bash` + login + interactive + `shell_init` setup automatically.
 
 ```yaml
 target:
@@ -445,10 +311,7 @@ target:
   bootstrap: kimi
 ```
 
-This expands to `shell: bash`, `shell_login: true`, `shell_interactive: true`, and `shell_init: ["command -v kimi >/dev/null 2>&1", "kimi"]`, then launches the prepared agent command. `shell_init` still accepts either a single command or a list of commands when you need the lower-level form; list entries are joined with `&&` so bootstrap failures still stop the wrapped agent launch. When you combine `bootstrap: kimi` with extra `shell_init` commands, AgentFlow now keeps those extra commands first and still appends the Kimi helper automatically, so node-specific bootstrap tweaks do not silently drop the shared Kimi setup.
-`agentflow validate` also treats `bootstrap: kimi` as a contract: if later overrides switch the node away from bash or disable interactive bash startup, validation now fails early instead of deferring that contradiction to inspect or preflight. If you need a different shell shape, drop `target.bootstrap` and configure the wrapper explicitly.
-
-When most local nodes share the same shell bootstrap, move that block to top-level `local_target_defaults` and only override the nodes that differ:
+When most local nodes share the same shell bootstrap, move that block to top-level `local_target_defaults` and only override the nodes that differ.
 
 ```yaml
 local_target_defaults:
@@ -467,39 +330,8 @@ nodes:
       cwd: review
 ```
 
-AgentFlow applies `local_target_defaults` to local nodes that omit `target`, merges it into local nodes that only override part of `target`, and leaves container or Lambda targets unchanged. If you prefer to spell the wrapper directly, explicit shells such as `bash -lic` behave the same way, and AgentFlow suppresses Bash's harmless no-job-control stderr noise for those interactive wrappers too. If your login shell uses `~/.bash_profile`, make sure it eventually reaches `~/.bashrc`, either directly or via another startup file such as `~/.profile`; otherwise Bash only reads `~/.profile` when no `~/.bash_profile` or `~/.bash_login` file is present. A minimal bridge looks like:
-
-If one local node should not inherit the shared Kimi preset, set `target.bootstrap: null` on that node. AgentFlow now treats that as an explicit opt-out from the inherited bootstrap while still preserving unrelated local defaults such as `cwd`. That opt-out also drops inherited shell bootstrap fields such as `shell`, `shell_login`, `shell_interactive`, and any shared `shell_init` commands, including extra commands that were prepended to the shared Kimi bootstrap.
-
-```yaml
-local_target_defaults:
-  bootstrap: kimi
-  cwd: workspace
-
-nodes:
-  - id: codex_plan
-    agent: codex
-    prompt: Reply with exactly: codex ok
-
-  - id: codex_direct
-    agent: codex
-    prompt: Reply with exactly: direct ok
-    target:
-      bootstrap: null
-```
-
-```bash
-# ~/.bash_profile or ~/.profile
-if [ -f "$HOME"/.bashrc ]; then
-  . "$HOME"/.bashrc
-fi
-```
-
-When you bootstrap `kimi` through Bash, keep Bash interactive too. `agentflow inspect` and the `run`/`smoke` auto-preflight now warn when either `shell_init: kimi` or an explicit `target.shell` wrapper such as `bash -lc 'kimi && {command}'`, `bash -lc 'eval "$(kimi)" && {command}'`, `bash -lc 'export $(kimi) && {command}'`, or `bash -lc 'source <(kimi) && {command}'` is paired with non-interactive Bash, because helpers defined in `~/.bashrc` are commonly skipped in `bash -lc`-style setups. That warning also calls out the easy-to-miss case where the wrapper explicitly runs `source ~/.bashrc` first, but `~/.bashrc` still returns early for non-interactive shells on the current host. If you intentionally preload `kimi` through `BASH_ENV=/path/to/shell.env bash -c ...` and that file defines the `kimi` helper or sources another file that does, AgentFlow treats that wrapper as ready and does not emit the `~/.bashrc` warning. The same readiness shortcut now applies when a non-interactive Bash wrapper explicitly sources a login file such as `~/.profile` or `~/.bash_profile` before `kimi`, as long as that sourced file really defines `kimi` or reaches another file that does. Use an explicit home path such as `~/.profile` or `$HOME/.bashrc` for those bridges; bare relative paths like `.bashrc` resolve from the shell's current working directory, not your home directory.
-
-`agentflow doctor` now also calls out the easy-to-miss case where `~/.bash_profile` exists, does not source `~/.bashrc`, and silently prevents a working `~/.profile` -> `~/.bashrc` bridge from ever running. When Bash falls back to `~/.profile` because `~/.bash_profile` and `~/.bash_login` are absent, the doctor output now says so directly. It also recognizes bridges written as absolute home paths such as `source /home/alice/.bashrc`, treats `~/.bashrc` symlinks into an external dotfiles repo as valid login-shell bridges, follows custom sourced files inside `HOME` such as `~/.bash_profile` -> `~/.bash_agentflow` -> `~/.bashrc`, verifies that both `claude --version` and `codex --version` still work after the shared `kimi` bootstrap, and reports unreadable startup files as warnings instead of crashing. When bash startup checks fail in less predictable ways, the doctor output now strips Bash's harmless interactive-shell noise and redacts likely secret values before echoing shell diagnostics back to you. If you want the exact bridge to paste into the active login file, run `agentflow doctor --output summary --shell-bridge`.
-
-`shell_init` is treated as a bootstrap prerequisite: if it exits non-zero, AgentFlow does not launch the wrapped agent command. This helps smoke runs fail fast when helper functions such as `kimi` are missing.
+If one local node should not inherit the shared bootstrap, set `target.bootstrap: null` on that node.
+`shell_init` is treated as a bootstrap prerequisite: if it exits non-zero, AgentFlow does not launch the wrapped agent command.
 
 ### Container
 

@@ -1,8 +1,0 @@
-- target: libpng
-  corpus: png
-- target: libjpeg
-  corpus: jpeg
-- target: freetype
-  corpus: fonts
-- target: sqlite
-  corpus: sql

@@ -14,7 +14,6 @@ import yaml
 import typer
 from pydantic import ValidationError
 from agentflow.defaults import (
-    bundled_fuzz_campaign_presets,
     bundled_templates,
     bundled_template_names,
     default_smoke_pipeline_path,
@@ -39,7 +38,6 @@ from agentflow.doctor import (
     build_local_smoke_doctor_report,
 )
 from agentflow.env import merge_env_layers
-from agentflow.fuzz_sizing import fuzz_campaign_preset_shard_multiple
 from agentflow.local_shell import (
     kimi_shell_init_requires_bash_warning,
     kimi_shell_init_requires_interactive_bash_warning,
@@ -1984,31 +1982,6 @@ def templates() -> None:
             f"- {template.name}: {template.description} "
             f"({'; '.join(details)})"
         )
-    typer.echo("\n".join(lines))
-
-
-@app.command()
-def template_presets() -> None:
-    lines = ["Bundled template presets:"]
-    for preset in bundled_fuzz_campaign_presets():
-        target_summary = ", ".join(f"`{family['target']}/{family['corpus']}`" for family in preset.families)
-        strategy_summary = ", ".join(
-            f"`{strategy['sanitizer']}/{strategy['focus']}`" for strategy in preset.strategies
-        )
-        shard_multiple = fuzz_campaign_preset_shard_multiple(preset=preset)
-        lines.append(
-            f"- {preset.name}: {preset.description} "
-            f"(targets: {target_summary}; strategies: {strategy_summary}; "
-            f"supported shard multiples via `shards=`: {shard_multiple}, {shard_multiple * 2}, {shard_multiple * 3}, ...)"
-        )
-
-    supported_templates = [
-        f"`{template.name}`"
-        for template in bundled_templates()
-        if any(parameter.name == "preset" for parameter in template.parameters)
-    ]
-    if supported_templates:
-        lines.append("Templates supporting `preset=`: " + ", ".join(supported_templates))
     typer.echo("\n".join(lines))
 
 

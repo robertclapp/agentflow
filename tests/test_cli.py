@@ -295,15 +295,19 @@ def test_init_command_prints_default_pipeline_template():
     assert result.exit_code == 0
     assert result.stdout.startswith("name: parallel-code-orchestration\n")
     assert "agent: codex" in result.stdout
+    assert "agent: claude" in result.stdout
+    assert "agent: kimi" in result.stdout
 
 
-def test_init_command_prints_local_kimi_smoke_template():
-    result = runner.invoke(app, ["init", "--template", "local-kimi-smoke"])
+def test_init_command_prints_codex_fanout_repo_sweep_template():
+    result = runner.invoke(app, ["init", "--template", "codex-fanout-repo-sweep"])
 
     assert result.exit_code == 0
-    assert result.stdout.startswith("name: local-real-agents-kimi-smoke\n")
-    assert "bootstrap: kimi" in result.stdout
-    assert "provider: kimi" in result.stdout
+    assert result.stdout.startswith("name: codex-fanout-repo-sweep\n")
+    assert "count: 8" in result.stdout
+    assert "id: prepare" in result.stdout
+    assert "id: sweep" in result.stdout
+    assert "id: merge" in result.stdout
 
 
 def test_init_command_prints_codex_repo_sweep_batched_template():
@@ -347,272 +351,51 @@ def test_init_command_prints_custom_codex_repo_sweep_batched_template():
     assert "Focus on security bugs, privilege boundaries, and missing coverage." in result.stdout
 
 
-def test_init_command_prints_codex_fuzz_matrix_template():
-    result = runner.invoke(app, ["init", "--template", "codex-fuzz-matrix"])
+@pytest.mark.parametrize(
+    ("template", "pipeline_name", "expected_fragments"),
+    [
+        (
+            "local-kimi-smoke",
+            "local-real-agents-kimi-smoke",
+            ("bootstrap: kimi", "provider: kimi"),
+        ),
+        (
+            "local-kimi-shell-init-smoke",
+            "local-real-agents-kimi-shell-init-smoke",
+            ("shell: bash", "shell_login: true", "shell_interactive: true", "shell_init: kimi", "provider: kimi"),
+        ),
+        (
+            "local-kimi-shell-wrapper-smoke",
+            "local-real-agents-kimi-shell-wrapper-smoke",
+            (
+                "shell: \"bash -lic 'command -v kimi >/dev/null 2>&1 && kimi && {command}'\"",
+                "provider: kimi",
+            ),
+        ),
+    ],
+)
+def test_init_command_prints_local_kimi_smoke_templates(template, pipeline_name, expected_fragments):
+    result = runner.invoke(app, ["init", "--template", template])
 
     assert result.exit_code == 0
-    assert "\nname: codex-fuzz-matrix\n" in f"\n{result.stdout}"
-    assert "fanout.matrix" in result.stdout
-    assert "family:" in result.stdout
+    assert result.stdout.startswith(f"name: {pipeline_name}\n")
+    for fragment in expected_fragments:
+        assert fragment in result.stdout
 
 
-def test_init_command_prints_codex_fuzz_matrix_128_template():
-    result = runner.invoke(app, ["init", "--template", "codex-fuzz-matrix-128"])
-
-    assert result.exit_code == 0
-    assert "\nname: codex-fuzz-matrix-128\n" in f"\n{result.stdout}"
-    assert "fanout.matrix" in result.stdout
-    assert "count: 128" not in result.stdout
-    assert "seed_bucket:" in result.stdout
-
-
-def test_init_command_prints_codex_fuzz_hierarchical_128_template():
-    result = runner.invoke(app, ["init", "--template", "codex-fuzz-hierarchical-128"])
-
-    assert result.exit_code == 0
-    assert "\nname: codex-fuzz-hierarchical-128\n" in f"\n{result.stdout}"
-    assert "family_merge" in result.stdout
-    assert "fanouts.fuzzer.summary.completed" in result.stdout
-    assert "fanouts.family_merge.with_output.nodes" in result.stdout
-
-
-def test_init_command_requires_destination_for_grouped_hierarchical_template_with_support_files():
-    result = runner.invoke(app, ["init", "--template", "codex-fuzz-hierarchical-grouped"])
-
-    assert result.exit_code == 1
-    assert result.stderr == (
-        "Template `codex-fuzz-hierarchical-grouped` includes support files and requires a destination path.\n"
-    )
-
-
-def test_init_command_requires_destination_for_configurable_template_with_support_files():
-    result = runner.invoke(app, ["init", "--template", "codex-fuzz-matrix-manifest"])
-
-    assert result.exit_code == 1
-    assert result.stderr == "Template `codex-fuzz-matrix-manifest` includes support files and requires a destination path.\n"
-
-
-def test_init_command_requires_destination_for_hierarchical_configurable_template_with_support_files():
-    result = runner.invoke(app, ["init", "--template", "codex-fuzz-hierarchical-manifest"])
-
-    assert result.exit_code == 1
-    assert result.stderr == (
-        "Template `codex-fuzz-hierarchical-manifest` includes support files and requires a destination path.\n"
-    )
-
-
-def test_init_command_requires_destination_for_template_with_support_files():
-    result = runner.invoke(app, ["init", "--template", "codex-fuzz-matrix-manifest-128"])
-
-    assert result.exit_code == 1
-    assert (
-        result.stderr
-        == "Template `codex-fuzz-matrix-manifest-128` includes support files and requires a destination path.\n"
-    )
-
-
-def test_init_command_requires_destination_for_browser_template_with_support_files():
-    result = runner.invoke(app, ["init", "--template", "codex-fuzz-browser-128"])
-
-    assert result.exit_code == 1
-    assert result.stderr == "Template `codex-fuzz-browser-128` includes support files and requires a destination path.\n"
-
-
-def test_init_command_requires_destination_for_rendered_template_with_support_files():
-    result = runner.invoke(app, ["init", "--template", "codex-fuzz-catalog"])
-
-    assert result.exit_code == 1
-    assert result.stderr == "Template `codex-fuzz-catalog` includes support files and requires a destination path.\n"
-
-
-def test_init_command_requires_destination_for_grouped_catalog_template_with_support_files():
-    result = runner.invoke(app, ["init", "--template", "codex-fuzz-catalog-grouped"])
-
-    assert result.exit_code == 1
-    assert result.stderr == (
-        "Template `codex-fuzz-catalog-grouped` includes support files and requires a destination path.\n"
-    )
-
-
-def test_init_command_prints_codex_fuzz_swarm_template():
-    result = runner.invoke(app, ["init", "--template", "codex-fuzz-swarm"])
-
-    assert result.exit_code == 0
-    assert "\nname: codex-fuzz-swarm-32\n" in f"\n{result.stdout}"
-    assert "count: 32" in result.stdout
-
-
-def test_init_command_prints_custom_codex_fuzz_swarm_template():
-    result = runner.invoke(
-        app,
-        [
-            "init",
-            "--template",
-            "codex-fuzz-swarm",
-            "--set",
-            "shards=128",
-            "--set",
-            "concurrency=24",
-            "--set",
-            "name=custom-fuzz-128",
-            "--set",
-            "working_dir=./custom_swarm",
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert "\nname: custom-fuzz-128\n" in f"\n{result.stdout}"
-    assert "working_dir: ./custom_swarm" in result.stdout
-    assert "concurrency: 24" in result.stdout
-    assert "count: 128" in result.stdout
-
-
-def test_init_command_prints_codex_fuzz_batched_template():
-    result = runner.invoke(app, ["init", "--template", "codex-fuzz-batched"])
-
-    assert result.exit_code == 0
-    assert "\nname: codex-fuzz-batched-128\n" in f"\n{result.stdout}"
-    assert "batches:" in result.stdout
-    assert "size: 16" in result.stdout
-
-
-def test_init_command_prints_custom_codex_fuzz_batched_template():
-    result = runner.invoke(
-        app,
-        [
-            "init",
-            "--template",
-            "codex-fuzz-batched",
-            "--set",
-            "shards=48",
-            "--set",
-            "batch_size=12",
-            "--set",
-            "concurrency=20",
-            "--set",
-            "name=custom-batched-48",
-            "--set",
-            "working_dir=./custom_batched",
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert "\nname: custom-batched-48\n" in f"\n{result.stdout}"
-    assert "working_dir: ./custom_batched" in result.stdout
-    assert "concurrency: 20" in result.stdout
-    assert "count: 48" in result.stdout
-    assert "size: 12" in result.stdout
-
-
-def test_init_command_prints_codex_fuzz_matrix_derived_template():
-    result = runner.invoke(app, ["init", "--template", "codex-fuzz-matrix-derived"])
-
-    assert result.exit_code == 0
-    assert "\nname: codex-fuzz-matrix-derived\n" in f"\n{result.stdout}"
-    assert "\n      derive:\n" in result.stdout
-    assert "label: \"{{ shard.target }}/{{ shard.sanitizer }}/{{ shard.focus }}/seed-{{ shard.seed }}\"" in result.stdout
-    assert "cwd: \"{{ shard.workspace }}\"" in result.stdout
-
-
-def test_init_command_prints_codex_fuzz_matrix_curated_template():
-    result = runner.invoke(app, ["init", "--template", "codex-fuzz-matrix-curated"])
-
-    assert result.exit_code == 0
-    assert "\nname: codex-fuzz-matrix-curated\n" in f"\n{result.stdout}"
-    assert "exclude:" in result.stdout
-    assert "include:" in result.stdout
-    assert "cwd: \"{{ shard.workspace }}\"" in result.stdout
-
-
-def test_init_command_prints_local_kimi_shell_init_smoke_template():
-    result = runner.invoke(app, ["init", "--template", "local-kimi-shell-init-smoke"])
-
-    assert result.exit_code == 0
-    assert result.stdout.startswith("name: local-real-agents-kimi-shell-init-smoke\n")
-    assert "shell_init: kimi" in result.stdout
-    assert "provider: kimi" in result.stdout
-
-
-def test_init_command_prints_local_kimi_shell_wrapper_smoke_template():
-    result = runner.invoke(app, ["init", "--template", "local-kimi-shell-wrapper-smoke"])
-
-    assert result.exit_code == 0
-    assert result.stdout.startswith("name: local-real-agents-kimi-shell-wrapper-smoke\n")
-    assert "shell: \"bash -lic 'command -v kimi >/dev/null 2>&1 && kimi && {command}'\"" in result.stdout
-    assert "provider: kimi" in result.stdout
-
-
-def test_templates_command_lists_bundled_templates():
+def test_templates_command_lists_current_bundled_templates():
     result = runner.invoke(app, ["templates"])
 
     assert result.exit_code == 0
-    assert result.stdout == (
-        "Bundled templates:\n"
-        "- pipeline: Generic Codex/Claude/Kimi starter DAG. "
-        "(source: `examples/pipeline.yaml`; use: `agentflow init --template pipeline`)\n"
-        "- codex-fanout-repo-sweep: Codex repo sweep that fans out one plan into 8 review shards and a final merge. "
-        "(source: `examples/codex-fanout-repo-sweep.yaml`; use: `agentflow init --template codex-fanout-repo-sweep`)\n"
-        "- codex-repo-sweep-batched: Configurable large-scale Codex repo sweep that uses `fanout.batches` plus `node_defaults` / `agent_defaults` to keep 128-shard maintainer reviews readable. "
-        "(params: `shards=128`, `batch_size=16`, `concurrency=32`, `focus=bugs, risky code paths, and missing tests`, `name=codex-repo-sweep-batched-<shards>`, `working_dir=./codex_repo_sweep_batched_<shards>`; source: `examples/codex-repo-sweep-batched.yaml`; use: `agentflow init --template codex-repo-sweep-batched`)\n"
-        "- codex-fuzz-matrix: Codex fuzz starter that uses `fanout.matrix` for target families and sanitizer/seed variants. "
-        "(source: `examples/fuzz/codex-fuzz-matrix.yaml`; use: `agentflow init --template codex-fuzz-matrix`)\n"
-        "- codex-fuzz-matrix-derived: Codex fuzz starter that uses `fanout.derive` to compute reusable shard labels and workdirs from matrix inputs. "
-        "(source: `examples/fuzz/codex-fuzz-matrix-derived.yaml`; use: `agentflow init --template codex-fuzz-matrix-derived`)\n"
-        "- codex-fuzz-matrix-curated: Curated Codex fuzz matrix that uses `fanout.exclude`, `fanout.include`, and `fanout.derive` to tune real campaigns without a catalog file. "
-        "(source: `examples/fuzz/codex-fuzz-matrix-curated.yaml`; use: `agentflow init --template codex-fuzz-matrix-curated`)\n"
-        "- codex-fuzz-matrix-128: 128-shard Codex fuzz matrix that uses `fanout.matrix` for target families, strategies, and seed buckets. "
-        "(source: `examples/fuzz/codex-fuzz-matrix-128.yaml`; use: `agentflow init --template codex-fuzz-matrix-128`)\n"
-        "- codex-fuzz-hierarchical-128: 128-shard Codex fuzz matrix with per-target reducers that use fanout summaries to keep large merges readable. "
-        "(source: `examples/fuzz/codex-fuzz-hierarchical-128.yaml`; use: `agentflow init --template codex-fuzz-hierarchical-128`)\n"
-        "- codex-fuzz-hierarchical-grouped: Configurable hierarchical Codex fuzz matrix that uses `fanout.group_by` to derive reducer families from a selectable preset-backed shard fanout. "
-        "(params: `preset=oss-fuzz-core`, `shards=64`, `concurrency=16`, `name=codex-fuzz-hierarchical-grouped-<shards>`, `working_dir=./codex_fuzz_hierarchical_grouped_<shards>`; assets: `manifests/codex-fuzz-hierarchical-grouped.axes.yaml`; source: `examples/fuzz/codex-fuzz-hierarchical-grouped.yaml`; use: `agentflow init --template codex-fuzz-hierarchical-grouped`)\n"
-        "- codex-fuzz-hierarchical-manifest: Configurable hierarchical Codex fuzz matrix that keeps preset-backed reusable axes and reducer families in sidecar manifests. "
-        "(params: `preset=oss-fuzz-core`, `shards=64`, `concurrency=16`, `name=codex-fuzz-hierarchical-manifest-<shards>`, `working_dir=./codex_fuzz_hierarchical_manifest_<shards>`; assets: `manifests/codex-fuzz-hierarchical.axes.yaml`, `manifests/codex-fuzz-hierarchical.families.yaml`; source: `examples/fuzz/codex-fuzz-hierarchical-manifest.yaml`; use: `agentflow init --template codex-fuzz-hierarchical-manifest`)\n"
-        "- codex-fuzz-matrix-manifest: Configurable Codex fuzz matrix that keeps selectable preset-backed reusable axes in `fanout.matrix_path` and scales by rendering more seed buckets. "
-        "(params: `preset=oss-fuzz-core`, `shards=64`, `concurrency=16`, `name=codex-fuzz-matrix-manifest-<shards>`, `working_dir=./codex_fuzz_matrix_manifest_<shards>`; assets: `manifests/codex-fuzz-matrix.axes.yaml`; source: `examples/fuzz/codex-fuzz-matrix-manifest.yaml`; use: `agentflow init --template codex-fuzz-matrix-manifest`)\n"
-        "- codex-fuzz-matrix-manifest-128: 128-shard Codex fuzz matrix that loads its axes from `fanout.matrix_path` for easier maintainer edits. "
-        "(assets: `manifests/codex-fuzz-matrix-manifest-128.axes.yaml`; source: `examples/fuzz/codex-fuzz-matrix-manifest-128.yaml`; use: `agentflow init --template codex-fuzz-matrix-manifest-128`)\n"
-        "- codex-fuzz-browser-128: 128-shard browser-surface Codex fuzz matrix generated from the `browser-surface` preset. "
-        "(assets: `manifests/codex-fuzz-browser-128.axes.yaml`; source: `examples/fuzz/codex-fuzz-browser-128.yaml`; use: `agentflow init --template codex-fuzz-browser-128`)\n"
-        "- codex-fuzz-campaign: Configurable preset-backed Codex fuzz campaign scaffold powered by `codex_fuzz_campaign()` and selectable `flat`, `batched`, or `grouped` layouts. "
-        "(params: `preset=oss-fuzz-core`, `layout=batched`, `shards=128`, `batch_size=16`, `concurrency=32`, `name=codex-fuzz-campaign-<preset>-<layout>-<shards>`, `working_dir=./codex_fuzz_campaign_<preset>_<layout>_<shards>`; source: `examples/fuzz/codex-fuzz-campaign.yaml`; use: `agentflow init --template codex-fuzz-campaign`)\n"
-        "- codex-fuzz-preset-batched: Configurable preset-backed Codex fuzz campaign that uses native `fanout.preset` plus `fanout.batches` to keep large 128-shard runs in one YAML file. "
-        "(params: `preset=oss-fuzz-core`, `shards=128`, `batch_size=16`, `concurrency=32`, `name=codex-fuzz-preset-batched-<shards>`, `working_dir=./codex_fuzz_preset_batched_<shards>`; source: `examples/fuzz/codex-fuzz-preset-batched.yaml`; use: `agentflow init --template codex-fuzz-preset-batched`)\n"
-        "- codex-fuzz-catalog: Configurable Codex fuzz campaign backed by a preset-generated CSV shard catalog; defaults to 128 shards and keeps per-shard labels and workdirs in the manifest. "
-        "(params: `preset=oss-fuzz-core`, `shards=128`, `concurrency=32`, `name=codex-fuzz-catalog-<shards>`, `working_dir=./codex_fuzz_catalog_<shards>`; assets: `manifests/codex-fuzz-catalog.csv`; source: `examples/fuzz/codex-fuzz-catalog.yaml`; use: `agentflow init --template codex-fuzz-catalog`)\n"
-        "- codex-fuzz-catalog-batched: Configurable Codex fuzz campaign backed by a preset-generated CSV shard catalog with neutral `fanout.batches` reducers for large explicit shard rosters. "
-        "(params: `preset=oss-fuzz-core`, `shards=128`, `batch_size=16`, `concurrency=32`, `name=codex-fuzz-catalog-batched-<shards>`, `working_dir=./codex_fuzz_catalog_batched_<shards>`; assets: `manifests/codex-fuzz-catalog.csv`; source: `examples/fuzz/codex-fuzz-catalog-batched.yaml`; use: `agentflow init --template codex-fuzz-catalog-batched`)\n"
-        "- codex-fuzz-catalog-grouped: Configurable hierarchical Codex fuzz campaign backed by a preset-generated CSV shard catalog and staged reducers derived via `fanout.group_by`. "
-        "(params: `preset=oss-fuzz-core`, `shards=128`, `concurrency=32`, `name=codex-fuzz-catalog-grouped-<shards>`, `working_dir=./codex_fuzz_catalog_grouped_<shards>`; assets: `manifests/codex-fuzz-catalog-grouped.csv`; source: `examples/fuzz/codex-fuzz-catalog-grouped.yaml`; use: `agentflow init --template codex-fuzz-catalog-grouped`)\n"
-        "- codex-fuzz-batched: Configurable Codex fuzz swarm that uses `fanout.batches` to create scoped batch reducers for large shard counts. "
-        "(params: `shards=128`, `batch_size=16`, `concurrency=32`, `name=codex-fuzz-batched-<shards>`, `working_dir=./codex_fuzz_batched_<shards>`; source: `examples/fuzz/codex-fuzz-batched.yaml`; use: `agentflow init --template codex-fuzz-batched`)\n"
-        "- codex-fuzz-swarm: Configurable Codex fuzz swarm scaffold; defaults to 32 shards and scales cleanly to larger campaigns. "
-        "(params: `shards=32`, `concurrency=8`, `name=codex-fuzz-swarm-<shards>`, `working_dir=./codex_fuzz_swarm_<shards>`; source: `examples/fuzz/fuzz_codex_32.yaml`; use: `agentflow init --template codex-fuzz-swarm`)\n"
-        "- codex-fuzz-swarm-128: 128-shard Codex fuzzing swarm with init, retries, per-shard workdirs, and a merge reducer. "
-        "(source: `examples/fuzz/fuzz_codex_128.yaml`; use: `agentflow init --template codex-fuzz-swarm-128`)\n"
-        "- local-kimi-smoke: Local Codex plus Claude-on-Kimi smoke DAG using `bootstrap: kimi`. "
-        "(source: `examples/local-real-agents-kimi-smoke.yaml`; use: `agentflow init --template local-kimi-smoke`)\n"
-        "- local-kimi-shell-init-smoke: Local Codex plus Claude-on-Kimi smoke DAG using explicit `shell_init: kimi`. "
-        "(source: `examples/local-real-agents-kimi-shell-init-smoke.yaml`; use: `agentflow init --template local-kimi-shell-init-smoke`)\n"
-        "- local-kimi-shell-wrapper-smoke: Local Codex plus Claude-on-Kimi smoke DAG using an explicit `target.shell` Kimi wrapper. "
-        "(source: `examples/local-real-agents-kimi-shell-wrapper-smoke.yaml`; use: `agentflow init --template local-kimi-shell-wrapper-smoke`)\n"
-    )
-
-
-def test_template_presets_command_lists_bundled_presets():
-    result = runner.invoke(app, ["template-presets"])
-
-    assert result.exit_code == 0
-    assert result.stdout == (
-        "Bundled template presets:\n"
-        "- oss-fuzz-core: Balanced native parser campaign across media, fonts, and storage surfaces. "
-        "(targets: `libpng/png`, `libjpeg/jpeg`, `freetype/fonts`, `sqlite/sql`; strategies: `asan/parser`, `asan/structure-aware`, `ubsan/differential`, `ubsan/stateful`; supported shard multiples via `shards=`: 16, 32, 48, ...)\n"
-        "- browser-surface: Browser-adjacent HTML, JS, font, and image surfaces for renderer-oriented campaigns. "
-        "(targets: `blink/html`, `v8/js`, `woff2/fonts`, `libwebp/webp`; strategies: `asan/parser`, `asan/structure-aware`, `ubsan/differential`, `ubsan/stateful`; supported shard multiples via `shards=`: 16, 32, 48, ...)\n"
-        "- protocol-stack: Protocol and transport libraries across DNS, HTTP/2, QUIC, and TLS inputs. "
-        "(targets: `c-ares/dns`, `nghttp2/http2`, `quiche/quic`, `openssl/tls`; strategies: `asan/parser`, `asan/structure-aware`, `ubsan/differential`, `ubsan/stateful`; supported shard multiples via `shards=`: 16, 32, 48, ...)\n"
-        "Templates supporting `preset=`: `codex-fuzz-hierarchical-grouped`, `codex-fuzz-hierarchical-manifest`, `codex-fuzz-matrix-manifest`, `codex-fuzz-campaign`, `codex-fuzz-preset-batched`, `codex-fuzz-catalog`, `codex-fuzz-catalog-batched`, `codex-fuzz-catalog-grouped`\n"
-    )
+    assert result.stdout.splitlines() == [
+        "Bundled templates:",
+        "- pipeline: Generic Codex/Claude/Kimi starter DAG. (source: `examples/pipeline.yaml`; use: `agentflow init --template pipeline`)",
+        "- codex-fanout-repo-sweep: Codex repo sweep that fans out one plan into 8 review shards and a final merge. (source: `examples/codex-fanout-repo-sweep.yaml`; use: `agentflow init --template codex-fanout-repo-sweep`)",
+        "- codex-repo-sweep-batched: Configurable large-scale Codex repo sweep that uses `fanout.batches` plus `node_defaults` / `agent_defaults` to keep 128-shard maintainer reviews readable. (params: `shards=128`, `batch_size=16`, `concurrency=32`, `focus=bugs, risky code paths, and missing tests`, `name=codex-repo-sweep-batched-<shards>`, `working_dir=./codex_repo_sweep_batched_<shards>`; source: `examples/codex-repo-sweep-batched.yaml`; use: `agentflow init --template codex-repo-sweep-batched`)",
+        "- local-kimi-smoke: Local Codex plus Claude-on-Kimi smoke DAG using `bootstrap: kimi`. (source: `examples/local-real-agents-kimi-smoke.yaml`; use: `agentflow init --template local-kimi-smoke`)",
+        "- local-kimi-shell-init-smoke: Local Codex plus Claude-on-Kimi smoke DAG using explicit `shell_init: kimi`. (source: `examples/local-real-agents-kimi-shell-init-smoke.yaml`; use: `agentflow init --template local-kimi-shell-init-smoke`)",
+        "- local-kimi-shell-wrapper-smoke: Local Codex plus Claude-on-Kimi smoke DAG using an explicit `target.shell` Kimi wrapper. (source: `examples/local-real-agents-kimi-shell-wrapper-smoke.yaml`; use: `agentflow init --template local-kimi-shell-wrapper-smoke`)",
+    ]
 
 
 def test_init_command_writes_selected_template_to_destination(tmp_path):
@@ -660,380 +443,6 @@ def test_init_command_writes_codex_repo_sweep_batched_template_to_destination(tm
     assert "Focus on security bugs, privilege boundaries, and missing coverage." in rendered_yaml
 
 
-def test_init_command_writes_selected_template_and_support_files_to_destination(tmp_path):
-    destination = tmp_path / "templates" / "fuzz-matrix-manifest.yaml"
-
-    result = runner.invoke(
-        app,
-        [
-            "init",
-            str(destination),
-            "--template",
-            "codex-fuzz-matrix-manifest",
-            "--set",
-            "shards=128",
-            "--set",
-            "concurrency=32",
-            "--set",
-            "name=custom-matrix-manifest-128",
-            "--set",
-            "working_dir=./custom_matrix_manifest",
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert result.stdout == f"Wrote `codex-fuzz-matrix-manifest` template to `{destination}`.\n"
-    rendered_yaml = destination.read_text(encoding="utf-8")
-    assert "\nname: custom-matrix-manifest-128\n" in f"\n{rendered_yaml}"
-    assert "concurrency: 32" in rendered_yaml
-    support_file = destination.parent / "manifests" / "codex-fuzz-matrix.axes.yaml"
-    assert support_file.exists()
-    support_text = support_file.read_text(encoding="utf-8")
-    assert "seed_bucket:" in support_text
-    assert "seed_008" in support_text
-
-
-def test_init_command_writes_preset_rendered_template_and_support_files_to_destination(tmp_path):
-    destination = tmp_path / "templates" / "fuzz-browser.yaml"
-
-    result = runner.invoke(
-        app,
-        [
-            "init",
-            str(destination),
-            "--template",
-            "codex-fuzz-matrix-manifest",
-            "--set",
-            "preset=browser-surface",
-            "--set",
-            "shards=128",
-            "--set",
-            "concurrency=32",
-            "--set",
-            "name=custom-browser-128",
-            "--set",
-            "working_dir=./custom_browser",
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert result.stdout == f"Wrote `codex-fuzz-matrix-manifest` template to `{destination}`.\n"
-    rendered_yaml = destination.read_text(encoding="utf-8")
-    assert "\nname: custom-browser-128\n" in f"\n{rendered_yaml}"
-    assert "browser-surface" in rendered_yaml
-    support_file = destination.parent / "manifests" / "codex-fuzz-matrix.axes.yaml"
-    assert support_file.exists()
-    support_text = support_file.read_text(encoding="utf-8")
-    assert "  - target: blink" in support_text
-    assert "  - target: libwebp" in support_text
-
-
-def test_init_command_writes_browser_template_and_support_files_to_destination(tmp_path):
-    destination = tmp_path / "templates" / "fuzz-browser-128.yaml"
-
-    result = runner.invoke(app, ["init", str(destination), "--template", "codex-fuzz-browser-128"])
-
-    assert result.exit_code == 0
-    assert result.stdout == f"Wrote `codex-fuzz-browser-128` template to `{destination}`.\n"
-    rendered_yaml = destination.read_text(encoding="utf-8")
-    assert "\nname: codex-fuzz-browser-128\n" in f"\n{rendered_yaml}"
-    assert "browser-surface" in rendered_yaml
-    support_file = destination.parent / "manifests" / "codex-fuzz-browser-128.axes.yaml"
-    assert support_file.exists()
-    support_text = support_file.read_text(encoding="utf-8")
-    assert "  - target: blink" in support_text
-    assert "  - target: libwebp" in support_text
-
-
-def test_init_command_writes_preset_batched_template_to_destination(tmp_path):
-    destination = tmp_path / "templates" / "fuzz-preset-batched.yaml"
-
-    result = runner.invoke(
-        app,
-        [
-            "init",
-            str(destination),
-            "--template",
-            "codex-fuzz-preset-batched",
-            "--set",
-            "preset=protocol-stack",
-            "--set",
-            "shards=48",
-            "--set",
-            "batch_size=6",
-            "--set",
-            "concurrency=12",
-            "--set",
-            "name=custom-preset-batched-48",
-            "--set",
-            "working_dir=./custom_preset_batched",
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert result.stdout == f"Wrote `codex-fuzz-preset-batched` template to `{destination}`.\n"
-    rendered_yaml = destination.read_text(encoding="utf-8")
-    assert "\nname: custom-preset-batched-48\n" in f"\n{rendered_yaml}"
-    assert "concurrency: 12" in rendered_yaml
-    assert "name: protocol-stack" in rendered_yaml
-    assert "shards: 48" in rendered_yaml
-    assert "size: 6" in rendered_yaml
-
-
-def test_init_command_writes_codex_fuzz_campaign_template_to_destination(tmp_path):
-    destination = tmp_path / "templates" / "fuzz-campaign.yaml"
-
-    result = runner.invoke(
-        app,
-        [
-            "init",
-            str(destination),
-            "--template",
-            "codex-fuzz-campaign",
-            "--set",
-            "preset=browser-surface",
-            "--set",
-            "layout=grouped",
-            "--set",
-            "shards=32",
-            "--set",
-            "concurrency=12",
-            "--set",
-            "name=browser-campaign-grouped-32",
-            "--set",
-            "working_dir=./browser_campaign_grouped",
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert result.stdout == f"Wrote `codex-fuzz-campaign` template to `{destination}`.\n"
-    rendered_yaml = destination.read_text(encoding="utf-8")
-    assert "\nname: browser-campaign-grouped-32\n" in f"\n{rendered_yaml}"
-    assert "concurrency: 12" in rendered_yaml
-    assert "name: browser-surface" in rendered_yaml
-    assert "shards: 32" in rendered_yaml
-    assert "group_by:" in rendered_yaml
-    assert "fields:" in rendered_yaml
-    assert "- target" in rendered_yaml
-    assert "- corpus" in rendered_yaml
-
-
-def test_init_command_still_accepts_legacy_bucket_count_for_codex_fuzz_campaign(tmp_path):
-    destination = tmp_path / "templates" / "fuzz-campaign-bucket-count.yaml"
-
-    result = runner.invoke(
-        app,
-        [
-            "init",
-            str(destination),
-            "--template",
-            "codex-fuzz-campaign",
-            "--set",
-            "preset=browser-surface",
-            "--set",
-            "layout=grouped",
-            "--set",
-            "bucket_count=2",
-        ],
-    )
-
-    assert result.exit_code == 0
-    rendered_yaml = destination.read_text(encoding="utf-8")
-    assert "name: browser-surface" in rendered_yaml
-    assert "shards: 32" in rendered_yaml
-
-
-def test_init_command_writes_hierarchical_template_and_support_files_to_destination(tmp_path):
-    destination = tmp_path / "templates" / "fuzz-hierarchical.yaml"
-
-    result = runner.invoke(
-        app,
-        [
-            "init",
-            str(destination),
-            "--template",
-            "codex-fuzz-hierarchical-manifest",
-            "--set",
-            "shards=128",
-            "--set",
-            "concurrency=32",
-            "--set",
-            "name=custom-hierarchical-manifest-128",
-            "--set",
-            "working_dir=./custom_hierarchical_manifest",
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert result.stdout == f"Wrote `codex-fuzz-hierarchical-manifest` template to `{destination}`.\n"
-    rendered_yaml = destination.read_text(encoding="utf-8")
-    assert "\nname: custom-hierarchical-manifest-128\n" in f"\n{rendered_yaml}"
-    assert "concurrency: 32" in rendered_yaml
-    axes_file = destination.parent / "manifests" / "codex-fuzz-hierarchical.axes.yaml"
-    families_file = destination.parent / "manifests" / "codex-fuzz-hierarchical.families.yaml"
-    assert axes_file.exists()
-    assert families_file.exists()
-    axes_text = axes_file.read_text(encoding="utf-8")
-    families_text = families_file.read_text(encoding="utf-8")
-    assert "seed_bucket:" in axes_text
-    assert "seed_008" in axes_text
-    assert families_text.strip().splitlines() == [
-        "- target: libpng",
-        "  corpus: png",
-        "- target: libjpeg",
-        "  corpus: jpeg",
-        "- target: freetype",
-        "  corpus: fonts",
-        "- target: sqlite",
-        "  corpus: sql",
-    ]
-
-
-def test_init_command_writes_grouped_hierarchical_template_and_support_files_to_destination(tmp_path):
-    destination = tmp_path / "templates" / "fuzz-hierarchical-grouped.yaml"
-
-    result = runner.invoke(
-        app,
-        [
-            "init",
-            str(destination),
-            "--template",
-            "codex-fuzz-hierarchical-grouped",
-            "--set",
-            "shards=128",
-            "--set",
-            "concurrency=32",
-            "--set",
-            "name=custom-hierarchical-grouped-128",
-            "--set",
-            "working_dir=./custom_hierarchical_grouped",
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert result.stdout == f"Wrote `codex-fuzz-hierarchical-grouped` template to `{destination}`.\n"
-    rendered_yaml = destination.read_text(encoding="utf-8")
-    assert "\nname: custom-hierarchical-grouped-128\n" in f"\n{rendered_yaml}"
-    assert "concurrency: 32" in rendered_yaml
-    assert "group_by:" in rendered_yaml
-    axes_file = destination.parent / "manifests" / "codex-fuzz-hierarchical-grouped.axes.yaml"
-    assert axes_file.exists()
-    axes_text = axes_file.read_text(encoding="utf-8")
-    assert "seed_bucket:" in axes_text
-    assert "seed_008" in axes_text
-
-
-def test_init_command_writes_rendered_template_and_support_files_to_destination(tmp_path):
-    destination = tmp_path / "templates" / "fuzz-catalog.yaml"
-
-    result = runner.invoke(
-        app,
-        [
-            "init",
-            str(destination),
-            "--template",
-            "codex-fuzz-catalog",
-            "--set",
-            "shards=48",
-            "--set",
-            "concurrency=12",
-            "--set",
-            "name=custom-catalog-48",
-            "--set",
-            "working_dir=./custom_catalog",
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert result.stdout == f"Wrote `codex-fuzz-catalog` template to `{destination}`.\n"
-    rendered_yaml = destination.read_text(encoding="utf-8")
-    assert "\nname: custom-catalog-48\n" in f"\n{rendered_yaml}"
-    assert "concurrency: 12" in rendered_yaml
-    support_file = destination.parent / "manifests" / "codex-fuzz-catalog.csv"
-    assert support_file.exists()
-    support_lines = support_file.read_text(encoding="utf-8").strip().splitlines()
-    assert len(support_lines) == 49
-    assert support_lines[0] == "label,target,corpus,sanitizer,focus,bucket,seed,workspace"
-    assert support_lines[1].startswith("libpng/asan/parser/seed_001,libpng,png,asan,parser,seed_001,4101,agents/")
-    assert support_lines[-1].startswith("sqlite/ubsan/stateful/seed_003,sqlite,sql,ubsan,stateful,seed_003,4103,agents/")
-
-
-def test_init_command_writes_batched_catalog_template_and_support_files_to_destination(tmp_path):
-    destination = tmp_path / "templates" / "fuzz-catalog-batched.yaml"
-
-    result = runner.invoke(
-        app,
-        [
-            "init",
-            str(destination),
-            "--template",
-            "codex-fuzz-catalog-batched",
-            "--set",
-            "shards=48",
-            "--set",
-            "batch_size=8",
-            "--set",
-            "concurrency=12",
-            "--set",
-            "name=custom-catalog-batched-48",
-            "--set",
-            "working_dir=./custom_catalog_batched",
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert result.stdout == f"Wrote `codex-fuzz-catalog-batched` template to `{destination}`.\n"
-    rendered_yaml = destination.read_text(encoding="utf-8")
-    assert "\nname: custom-catalog-batched-48\n" in f"\n{rendered_yaml}"
-    assert "concurrency: 12" in rendered_yaml
-    assert "batches:" in rendered_yaml
-    assert "size: 8" in rendered_yaml
-    support_file = destination.parent / "manifests" / "codex-fuzz-catalog.csv"
-    assert support_file.exists()
-    support_lines = support_file.read_text(encoding="utf-8").strip().splitlines()
-    assert len(support_lines) == 49
-    assert support_lines[0] == "label,target,corpus,sanitizer,focus,bucket,seed,workspace"
-    assert support_lines[1].startswith("libpng/asan/parser/seed_001,libpng,png,asan,parser,seed_001,4101,agents/")
-    assert support_lines[-1].startswith("sqlite/ubsan/stateful/seed_003,sqlite,sql,ubsan,stateful,seed_003,4103,agents/")
-
-
-def test_init_command_writes_grouped_catalog_template_and_support_files_to_destination(tmp_path):
-    destination = tmp_path / "templates" / "fuzz-catalog-grouped.yaml"
-
-    result = runner.invoke(
-        app,
-        [
-            "init",
-            str(destination),
-            "--template",
-            "codex-fuzz-catalog-grouped",
-            "--set",
-            "shards=48",
-            "--set",
-            "concurrency=12",
-            "--set",
-            "name=custom-catalog-grouped-48",
-            "--set",
-            "working_dir=./custom_catalog_grouped",
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert result.stdout == f"Wrote `codex-fuzz-catalog-grouped` template to `{destination}`.\n"
-    rendered_yaml = destination.read_text(encoding="utf-8")
-    assert "\nname: custom-catalog-grouped-48\n" in f"\n{rendered_yaml}"
-    assert "concurrency: 12" in rendered_yaml
-    assert "group_by:" in rendered_yaml
-    assert "{{ current.scope.ids | join(\", \") }}" in rendered_yaml
-    support_file = destination.parent / "manifests" / "codex-fuzz-catalog-grouped.csv"
-    assert support_file.exists()
-    support_lines = support_file.read_text(encoding="utf-8").strip().splitlines()
-    assert len(support_lines) == 49
-    assert support_lines[0] == "label,target,corpus,sanitizer,focus,bucket,seed,workspace"
-    assert support_lines[1].startswith("libpng/asan/parser/seed_001,libpng,png,asan,parser,seed_001,4101,agents/")
-    assert support_lines[-1].startswith("sqlite/ubsan/stateful/seed_003,sqlite,sql,ubsan,stateful,seed_003,4103,agents/")
-
-
 def test_init_command_refuses_to_overwrite_existing_file_without_force(tmp_path):
     destination = tmp_path / "pipeline.yaml"
     destination.write_text("name: keep-me\n", encoding="utf-8")
@@ -1045,17 +454,25 @@ def test_init_command_refuses_to_overwrite_existing_file_without_force(tmp_path)
     assert destination.read_text(encoding="utf-8") == "name: keep-me\n"
 
 
-def test_init_command_refuses_to_overwrite_existing_support_file_without_force(tmp_path):
-    destination = tmp_path / "templates" / "fuzz-matrix-manifest.yaml"
-    support_file = destination.parent / "manifests" / "codex-fuzz-matrix.axes.yaml"
-    support_file.parent.mkdir(parents=True)
-    support_file.write_text("keep-me\n", encoding="utf-8")
+def test_init_command_overwrites_existing_file_with_force(tmp_path):
+    destination = tmp_path / "pipeline.yaml"
+    destination.write_text("name: keep-me\n", encoding="utf-8")
 
-    result = runner.invoke(app, ["init", str(destination), "--template", "codex-fuzz-matrix-manifest"])
+    result = runner.invoke(app, ["init", str(destination), "--template", "local-kimi-shell-init-smoke", "--force"])
+
+    assert result.exit_code == 0
+    assert result.stdout == f"Wrote `local-kimi-shell-init-smoke` template to `{destination}`.\n"
+    assert destination.read_text(encoding="utf-8").startswith("name: local-real-agents-kimi-shell-init-smoke\n")
+
+
+def test_init_command_rejects_directory_destination(tmp_path):
+    destination = tmp_path / "templates"
+    destination.mkdir()
+
+    result = runner.invoke(app, ["init", str(destination), "--template", "pipeline"])
 
     assert result.exit_code == 1
-    assert result.stderr == f"Destination `{support_file}` already exists. Use `--force` to overwrite it.\n"
-    assert support_file.read_text(encoding="utf-8") == "keep-me\n"
+    assert result.stderr == f"Destination `{destination}` is a directory.\n"
 
 
 def test_init_command_rejects_unknown_template():
@@ -1064,25 +481,54 @@ def test_init_command_rejects_unknown_template():
     assert result.exit_code != 0
     assert "unknown bundled template `missing-template`" in result.stderr
     assert "`pipeline`" in result.stderr
-    assert "`local-kimi-smoke`" in result.stderr
+    assert "`codex-fanout-repo-sweep`" in result.stderr
+    assert "`local-kimi-shell-wrapper-smoke`" in result.stderr
     assert "`agentflow templates`" in result.stderr
 
 
 def test_init_command_rejects_invalid_template_setting_format():
-    result = runner.invoke(app, ["init", "--template", "codex-fuzz-swarm", "--set", "shards"])
+    result = runner.invoke(app, ["init", "--template", "codex-repo-sweep-batched", "--set", "shards"])
 
     assert result.exit_code != 0
     assert "template settings must use KEY=VALUE form" in result.stderr
 
 
-def test_init_command_rejects_unknown_template_setting():
-    result = runner.invoke(app, ["init", "--template", "codex-fuzz-swarm", "--set", "unknown=1"])
+def test_init_command_rejects_duplicate_template_setting():
+    result = runner.invoke(
+        app,
+        [
+            "init",
+            "--template",
+            "codex-repo-sweep-batched",
+            "--set",
+            "shards=64",
+            "--set",
+            "shards=32",
+        ],
+    )
 
     assert result.exit_code != 0
-    assert "does not recognize" in result.stderr
-    assert "`unknown`" in result.stderr
+    assert "template setting `shards` was provided more than" in result.stderr
+    assert "once" in result.stderr
+
+
+def test_init_command_rejects_unknown_template_setting():
+    result = runner.invoke(app, ["init", "--template", "codex-repo-sweep-batched", "--set", "unknown=1"])
+
+    assert result.exit_code != 0
+    assert "does not" in result.stderr
+    assert "recognize `unknown`" in result.stderr
     assert "`shards`" in result.stderr
+    assert "`focus`" in result.stderr
     assert "`working_dir`" in result.stderr
+
+
+def test_init_command_rejects_invalid_integer_template_setting():
+    result = runner.invoke(app, ["init", "--template", "codex-repo-sweep-batched", "--set", "shards=many"])
+
+    assert result.exit_code != 0
+    assert "template `codex-repo-sweep-batched` expects" in result.stderr
+    assert "`shards` to be an integer" in result.stderr
 
 
 def test_init_command_rejects_template_settings_for_static_template():
