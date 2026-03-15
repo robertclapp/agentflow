@@ -566,18 +566,124 @@ def test_pipeline_validation_expands_grouped_fanout_nodes_and_group_dependencies
         "count": 2,
         "suffix": "0",
         "value": {
+            "source_group": "fuzz",
+            "source_count": 4,
+            "size": 2,
+            "member_ids": ["fuzz_0", "fuzz_1"],
+            "members": [
+                {
+                    "index": 0,
+                    "number": 1,
+                    "count": 4,
+                    "suffix": "0",
+                    "value": {
+                        "family": {"target": "libpng", "corpus": "png"},
+                        "variant": {"sanitizer": "asan", "seed": 101},
+                        "target": "libpng",
+                        "corpus": "png",
+                        "sanitizer": "asan",
+                        "seed": 101,
+                    },
+                    "template_id": "fuzz",
+                    "node_id": "fuzz_0",
+                    "family": {"target": "libpng", "corpus": "png"},
+                    "variant": {"sanitizer": "asan", "seed": 101},
+                    "target": "libpng",
+                    "corpus": "png",
+                    "sanitizer": "asan",
+                    "seed": 101,
+                    "family_label": "libpng/png",
+                },
+                {
+                    "index": 1,
+                    "number": 2,
+                    "count": 4,
+                    "suffix": "1",
+                    "value": {
+                        "family": {"target": "libpng", "corpus": "png"},
+                        "variant": {"sanitizer": "ubsan", "seed": 202},
+                        "target": "libpng",
+                        "corpus": "png",
+                        "sanitizer": "ubsan",
+                        "seed": 202,
+                    },
+                    "template_id": "fuzz",
+                    "node_id": "fuzz_1",
+                    "family": {"target": "libpng", "corpus": "png"},
+                    "variant": {"sanitizer": "ubsan", "seed": 202},
+                    "target": "libpng",
+                    "corpus": "png",
+                    "sanitizer": "ubsan",
+                    "seed": 202,
+                    "family_label": "libpng/png",
+                },
+            ],
             "target": "libpng",
             "corpus": "png",
             "family_label": "libpng/png",
         },
         "template_id": "family_merge",
         "node_id": "family_merge_0",
+        "source_group": "fuzz",
+        "source_count": 4,
+        "size": 2,
+        "member_ids": ["fuzz_0", "fuzz_1"],
+        "members": [
+            {
+                "index": 0,
+                "number": 1,
+                "count": 4,
+                "suffix": "0",
+                "value": {
+                    "family": {"target": "libpng", "corpus": "png"},
+                    "variant": {"sanitizer": "asan", "seed": 101},
+                    "target": "libpng",
+                    "corpus": "png",
+                    "sanitizer": "asan",
+                    "seed": 101,
+                },
+                "template_id": "fuzz",
+                "node_id": "fuzz_0",
+                "family": {"target": "libpng", "corpus": "png"},
+                "variant": {"sanitizer": "asan", "seed": 101},
+                "target": "libpng",
+                "corpus": "png",
+                "sanitizer": "asan",
+                "seed": 101,
+                "family_label": "libpng/png",
+            },
+            {
+                "index": 1,
+                "number": 2,
+                "count": 4,
+                "suffix": "1",
+                "value": {
+                    "family": {"target": "libpng", "corpus": "png"},
+                    "variant": {"sanitizer": "ubsan", "seed": 202},
+                    "target": "libpng",
+                    "corpus": "png",
+                    "sanitizer": "ubsan",
+                    "seed": 202,
+                },
+                "template_id": "fuzz",
+                "node_id": "fuzz_1",
+                "family": {"target": "libpng", "corpus": "png"},
+                "variant": {"sanitizer": "ubsan", "seed": 202},
+                "target": "libpng",
+                "corpus": "png",
+                "sanitizer": "ubsan",
+                "seed": 202,
+                "family_label": "libpng/png",
+            },
+        ],
         "target": "libpng",
         "corpus": "png",
         "family_label": "libpng/png",
     }
     assert pipeline.node_map["family_merge_1"].fanout_member["target"] == "sqlite"
-    assert pipeline.node_map["family_merge_0"].depends_on == ["fuzz_0", "fuzz_1", "fuzz_2", "fuzz_3"]
+    assert pipeline.node_map["family_merge_1"].fanout_member["member_ids"] == ["fuzz_2", "fuzz_3"]
+    assert pipeline.node_map["family_merge_0"].depends_on == ["fuzz_0", "fuzz_1"]
+    assert pipeline.node_map["family_merge_1"].depends_on == ["fuzz_2", "fuzz_3"]
     assert pipeline.node_map["merge"].depends_on == ["family_merge_0", "family_merge_1"]
 
 
@@ -1031,6 +1137,46 @@ def test_pipeline_validation_rejects_grouped_fanout_with_missing_source_field():
                         "agent": "codex",
                         "depends_on": ["fuzz"],
                         "prompt": "merge {{ family.corpus }}",
+                    },
+                ],
+            }
+        )
+
+
+def test_pipeline_validation_rejects_grouped_fanout_with_reserved_scoped_metadata_field():
+    with pytest.raises(
+        ValueError,
+        match=r"`fanout\.group_by\.fields` cannot use reserved scoped reducer metadata fields `members`",
+    ):
+        PipelineSpec.model_validate(
+            {
+                "name": "bad-fanout-group-by-reserved-field",
+                "working_dir": ".",
+                "nodes": [
+                    {
+                        "id": "fuzz",
+                        "fanout": {
+                            "as": "shard",
+                            "values": [
+                                {"members": "libpng"},
+                                {"members": "sqlite"},
+                            ],
+                        },
+                        "agent": "codex",
+                        "prompt": "fuzz {{ shard.members }}",
+                    },
+                    {
+                        "id": "family_merge",
+                        "fanout": {
+                            "as": "family",
+                            "group_by": {
+                                "from": "fuzz",
+                                "fields": ["members"],
+                            },
+                        },
+                        "agent": "codex",
+                        "depends_on": ["fuzz"],
+                        "prompt": "merge {{ family.members }}",
                     },
                 ],
             }

@@ -76,6 +76,15 @@ def test_bundled_templates_expose_descriptions_and_example_files():
         "name",
         "working_dir",
     )
+    assert by_name["codex-fuzz-catalog-grouped"].example_name == "fuzz/codex-fuzz-catalog-grouped.yaml"
+    assert "fanout.group_by" in by_name["codex-fuzz-catalog-grouped"].description
+    assert by_name["codex-fuzz-catalog-grouped"].support_files == ("manifests/codex-fuzz-catalog-grouped.csv",)
+    assert tuple(parameter.name for parameter in by_name["codex-fuzz-catalog-grouped"].parameters) == (
+        "shards",
+        "concurrency",
+        "name",
+        "working_dir",
+    )
     assert by_name["codex-fuzz-batched"].example_name == "fuzz/codex-fuzz-batched.yaml"
     assert "fanout.batches" in by_name["codex-fuzz-batched"].description
     assert tuple(parameter.name for parameter in by_name["codex-fuzz-batched"].parameters) == (
@@ -227,6 +236,8 @@ def test_bundled_codex_fuzz_hierarchical_grouped_template_accepts_overrides_and_
     assert "matrix_path: manifests/codex-fuzz-hierarchical-grouped.axes.yaml" in rendered.yaml
     assert "group_by:" in rendered.yaml
     assert "from: fuzzer" in rendered.yaml
+    assert "{{ current.member_ids | join(\", \") }}" in rendered.yaml
+    assert "{{ nodes[shard.node_id].output or \"(no output)\" }}" in rendered.yaml
     assert rendered.support_files[0].relative_path == "manifests/codex-fuzz-hierarchical-grouped.axes.yaml"
     rendered_axes = rendered.support_files[0].content.strip().splitlines()
     assert rendered_axes[:4] == ["family:", "  - target: libpng", "    corpus: png", "  - target: libjpeg"]
@@ -254,7 +265,11 @@ def test_bundled_codex_fuzz_hierarchical_grouped_template_accepts_overrides_and_
         "family_merge_3",
     ]
     assert pipeline.node_map["family_merge_0"].fanout_member["target"] == "libpng"
+    assert pipeline.node_map["family_merge_0"].fanout_member["member_ids"][0] == "fuzzer_000"
+    assert pipeline.node_map["family_merge_0"].fanout_member["member_ids"][-1] == "fuzzer_031"
     assert pipeline.node_map["family_merge_3"].fanout_member["target"] == "sqlite"
+    assert pipeline.node_map["family_merge_0"].depends_on[0] == "fuzzer_000"
+    assert pipeline.node_map["family_merge_0"].depends_on[-1] == "fuzzer_031"
     assert pipeline.node_map["merge"].depends_on == [
         "family_merge_0",
         "family_merge_1",
@@ -481,6 +496,109 @@ def test_bundled_codex_fuzz_catalog_template_accepts_overrides_and_renders_suppo
     assert pipeline.node_map["fuzzer_00"].target.cwd.endswith("custom_catalog/agents/libpng_asan_seed_001_00")
     assert pipeline.node_map["merge"].depends_on[0] == "fuzzer_00"
     assert pipeline.node_map["merge"].depends_on[-1] == "fuzzer_47"
+
+
+def test_bundled_codex_fuzz_catalog_grouped_template_is_available():
+    assert "codex-fuzz-catalog-grouped" in bundled_template_names()
+    assert "\nname: codex-fuzz-catalog-grouped-128\n" in f"\n{load_bundled_template_yaml('codex-fuzz-catalog-grouped')}"
+    assert bundled_template_support_files("codex-fuzz-catalog-grouped") == (
+        "manifests/codex-fuzz-catalog-grouped.csv",
+    )
+
+
+def test_bundled_codex_fuzz_catalog_grouped_template_matches_default_example_files():
+    expected_yaml = bundled_template_path("codex-fuzz-catalog-grouped").read_text(encoding="utf-8")
+    expected_catalog = (
+        bundled_template_path("codex-fuzz-catalog-grouped").parent / "manifests" / "codex-fuzz-catalog-grouped.csv"
+    ).read_text(encoding="utf-8")
+    rendered = render_bundled_template("codex-fuzz-catalog-grouped")
+
+    assert rendered.yaml == expected_yaml
+    assert len(rendered.support_files) == 1
+    assert rendered.support_files[0].relative_path == "manifests/codex-fuzz-catalog-grouped.csv"
+    assert rendered.support_files[0].content == expected_catalog
+
+
+def test_bundled_codex_fuzz_catalog_grouped_template_accepts_overrides_and_renders_support_file(tmp_path):
+    rendered = render_bundled_template(
+        "codex-fuzz-catalog-grouped",
+        values={
+            "shards": "48",
+            "concurrency": "12",
+            "name": "custom-catalog-grouped-48",
+            "working_dir": "./custom_catalog_grouped",
+        },
+    )
+
+    assert "name: custom-catalog-grouped-48\n" in rendered.yaml
+    assert "working_dir: ./custom_catalog_grouped\n" in rendered.yaml
+    assert "concurrency: 12\n" in rendered.yaml
+    assert "values_path: manifests/codex-fuzz-catalog-grouped.csv" in rendered.yaml
+    assert "group_by:" in rendered.yaml
+    assert "{{ current.member_ids | join(\", \") }}" in rendered.yaml
+    assert "{{ nodes[shard.node_id].output or \"(no output)\" }}" in rendered.yaml
+    assert rendered.support_files[0].relative_path == "manifests/codex-fuzz-catalog-grouped.csv"
+    rendered_rows = rendered.support_files[0].content.strip().splitlines()
+    assert len(rendered_rows) == 49
+    assert rendered_rows[0] == "label,target,corpus,sanitizer,focus,bucket,seed,workspace"
+    assert rendered_rows[1].startswith("libpng/asan/parser/seed_001,libpng,png,asan,parser,seed_001,4101,agents/")
+    assert rendered_rows[-1].startswith(
+        "sqlite/ubsan/stateful/seed_003,sqlite,sql,ubsan,stateful,seed_003,4103,agents/"
+    )
+
+    pipeline_path = tmp_path / "custom-catalog-grouped.yaml"
+    pipeline_path.write_text(rendered.yaml, encoding="utf-8")
+    support_path = tmp_path / rendered.support_files[0].relative_path
+    support_path.parent.mkdir(parents=True, exist_ok=True)
+    support_path.write_text(rendered.support_files[0].content, encoding="utf-8")
+    pipeline = load_pipeline_from_path(str(pipeline_path))
+
+    assert pipeline.concurrency == 12
+    assert len(pipeline.fanouts["fuzzer"]) == 48
+    assert pipeline.fanouts["fuzzer"][:3] == ["fuzzer_00", "fuzzer_01", "fuzzer_02"]
+    assert pipeline.fanouts["fuzzer"][-1] == "fuzzer_47"
+    assert pipeline.fanouts["family_merge"] == [
+        "family_merge_0",
+        "family_merge_1",
+        "family_merge_2",
+        "family_merge_3",
+    ]
+    assert pipeline.node_map["fuzzer_00"].fanout_member["label"] == "libpng/asan/parser/seed_001"
+    assert pipeline.node_map["family_merge_0"].fanout_member["target"] == "libpng"
+    assert pipeline.node_map["family_merge_0"].fanout_member["member_ids"] == [
+        "fuzzer_00",
+        "fuzzer_01",
+        "fuzzer_02",
+        "fuzzer_03",
+        "fuzzer_16",
+        "fuzzer_17",
+        "fuzzer_18",
+        "fuzzer_19",
+        "fuzzer_32",
+        "fuzzer_33",
+        "fuzzer_34",
+        "fuzzer_35",
+    ]
+    assert pipeline.node_map["family_merge_0"].depends_on == [
+        "fuzzer_00",
+        "fuzzer_01",
+        "fuzzer_02",
+        "fuzzer_03",
+        "fuzzer_16",
+        "fuzzer_17",
+        "fuzzer_18",
+        "fuzzer_19",
+        "fuzzer_32",
+        "fuzzer_33",
+        "fuzzer_34",
+        "fuzzer_35",
+    ]
+    assert pipeline.node_map["merge"].depends_on == [
+        "family_merge_0",
+        "family_merge_1",
+        "family_merge_2",
+        "family_merge_3",
+    ]
 
 
 def test_bundled_codex_fuzz_batched_template_is_available():
@@ -768,12 +886,32 @@ def test_bundled_codex_fuzz_hierarchical_grouped_pipeline_expands_into_grouped_r
         "family_merge_3",
     ]
     assert pipeline.node_map["family_merge_0"].fanout_member["target"] == "libpng"
+    assert pipeline.node_map["family_merge_0"].fanout_member["member_ids"] == [
+        "fuzzer_00",
+        "fuzzer_01",
+        "fuzzer_02",
+        "fuzzer_03",
+        "fuzzer_04",
+        "fuzzer_05",
+        "fuzzer_06",
+        "fuzzer_07",
+        "fuzzer_08",
+        "fuzzer_09",
+        "fuzzer_10",
+        "fuzzer_11",
+        "fuzzer_12",
+        "fuzzer_13",
+        "fuzzer_14",
+        "fuzzer_15",
+    ]
     assert pipeline.node_map["family_merge_3"].fanout_member["target"] == "sqlite"
+    assert "current.member_ids" in pipeline.node_map["family_merge_0"].prompt
+    assert "current.members" in pipeline.node_map["family_merge_0"].prompt
     assert "current.target" in pipeline.node_map["family_merge_0"].prompt
     assert "current.corpus" in pipeline.node_map["family_merge_0"].prompt
     assert '{% set target = "' not in pipeline.node_map["family_merge_0"].prompt
     assert pipeline.node_map["family_merge_0"].depends_on[0] == "fuzzer_00"
-    assert pipeline.node_map["family_merge_0"].depends_on[-1] == "fuzzer_63"
+    assert pipeline.node_map["family_merge_0"].depends_on[-1] == "fuzzer_15"
     assert pipeline.node_map["merge"].depends_on == [
         "family_merge_0",
         "family_merge_1",
@@ -865,6 +1003,50 @@ def test_bundled_codex_fuzz_catalog_pipeline_expands_into_128_concrete_nodes():
     assert pipeline.node_map["fuzzer_000"].target.cwd.endswith("codex_fuzz_catalog_128/agents/libpng_asan_seed_001_000")
     assert pipeline.node_map["merge"].depends_on[0] == "fuzzer_000"
     assert pipeline.node_map["merge"].depends_on[-1] == "fuzzer_127"
+
+
+def test_bundled_codex_fuzz_catalog_grouped_pipeline_expands_into_scoped_grouped_reducers():
+    pipeline = load_pipeline_from_path(str(bundled_template_path("codex-fuzz-catalog-grouped")))
+
+    assert pipeline.concurrency == 32
+    assert len(pipeline.fanouts["fuzzer"]) == 128
+    assert pipeline.fanouts["fuzzer"][:3] == ["fuzzer_000", "fuzzer_001", "fuzzer_002"]
+    assert pipeline.fanouts["fuzzer"][-1] == "fuzzer_127"
+    assert len(pipeline.fanouts["family_merge"]) == 4
+    assert pipeline.fanouts["family_merge"] == [
+        "family_merge_0",
+        "family_merge_1",
+        "family_merge_2",
+        "family_merge_3",
+    ]
+    assert pipeline.node_map["fuzzer_000"].fanout_member["label"] == "libpng/asan/parser/seed_001"
+    assert pipeline.node_map["fuzzer_000"].fanout_member["workspace"] == "agents/libpng_asan_seed_001_000"
+    assert pipeline.node_map["fuzzer_000"].target.cwd.endswith(
+        "codex_fuzz_catalog_grouped_128/agents/libpng_asan_seed_001_000"
+    )
+    assert pipeline.node_map["family_merge_0"].fanout_member["target"] == "libpng"
+    assert pipeline.node_map["family_merge_0"].fanout_member["member_ids"][:4] == [
+        "fuzzer_000",
+        "fuzzer_001",
+        "fuzzer_002",
+        "fuzzer_003",
+    ]
+    assert pipeline.node_map["family_merge_0"].fanout_member["member_ids"][-4:] == [
+        "fuzzer_112",
+        "fuzzer_113",
+        "fuzzer_114",
+        "fuzzer_115",
+    ]
+    assert "current.member_ids" in pipeline.node_map["family_merge_0"].prompt
+    assert "current.members" in pipeline.node_map["family_merge_0"].prompt
+    assert pipeline.node_map["family_merge_0"].depends_on[0] == "fuzzer_000"
+    assert pipeline.node_map["family_merge_0"].depends_on[-1] == "fuzzer_115"
+    assert pipeline.node_map["merge"].depends_on == [
+        "family_merge_0",
+        "family_merge_1",
+        "family_merge_2",
+        "family_merge_3",
+    ]
 
 
 def test_bundled_codex_fanout_repo_sweep_pipeline_expands_into_concrete_nodes():

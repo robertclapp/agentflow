@@ -1,20 +1,20 @@
-# Configurable hierarchical Codex fuzz matrix with grouped reducers
+# Configurable hierarchical Codex fuzz catalog
 #
-# This scaffold keeps only the reusable fuzz axes in a sidecar manifest. The
-# per-family reducer roster is derived automatically from the expanded shard
-# fanout via `fanout.group_by`, so maintainers do not need to keep a second
-# family manifest in sync.
+# This scaffold keeps shard metadata in a sidecar CSV and derives the staged
+# reducer roster automatically from the catalog itself. Use it when each shard
+# needs explicit per-row metadata but the maintainer handoff should still stay
+# readable at large fanout sizes.
 #
 # Usage:
-#   agentflow init fuzz-hierarchical-grouped.yaml --template codex-fuzz-hierarchical-grouped
-#   agentflow init fuzz-hierarchical-grouped-128.yaml --template codex-fuzz-hierarchical-grouped --set bucket_count=8 --set concurrency=32
-#   agentflow inspect fuzz-hierarchical-grouped.yaml --output summary
-#   agentflow run fuzz-hierarchical-grouped.yaml --preflight never
+#   agentflow init fuzz-catalog-grouped.yaml --template codex-fuzz-catalog-grouped
+#   agentflow init fuzz-catalog-grouped-64.yaml --template codex-fuzz-catalog-grouped --set shards=64 --set concurrency=16
+#   agentflow inspect fuzz-catalog-grouped.yaml --output summary
+#   agentflow run fuzz-catalog-grouped.yaml --preflight never
 
-name: codex-fuzz-hierarchical-grouped-64
-description: Configurable hierarchical 64-shard Codex fuzz matrix that derives per-target reducers from `fanout.group_by`.
-working_dir: ./codex_fuzz_hierarchical_grouped_64
-concurrency: 16
+name: codex-fuzz-catalog-grouped-128
+description: Configurable hierarchical 128-shard Codex fuzz campaign backed by a CSV shard catalog with reducers derived via `fanout.group_by`.
+working_dir: ./codex_fuzz_catalog_grouped_128
+concurrency: 32
 
 nodes:
   - id: init
@@ -40,10 +40,7 @@ nodes:
   - id: fuzzer
     fanout:
       as: shard
-      matrix_path: manifests/codex-fuzz-hierarchical-grouped.axes.yaml
-      derive:
-        label: "{{ shard.target }} / {{ shard.sanitizer }} / {{ shard.focus }} / {{ shard.bucket }}"
-        workspace: "agents/{{ shard.target }}_{{ shard.sanitizer }}_{{ shard.bucket }}_{{ shard.suffix }}"
+      values_path: manifests/codex-fuzz-catalog-grouped.csv
     agent: codex
     model: gpt-5-codex
     tools: read_write
@@ -62,20 +59,20 @@ nodes:
       You are Codex fuzz shard {{ shard.number }} of {{ shard.count }} in an authorized campaign.
 
       Campaign inputs:
+      - Catalog label: {{ shard.label }}
       - Target: {{ shard.target }}
       - Corpus family: {{ shard.corpus }}
       - Sanitizer: {{ shard.sanitizer }}
       - Strategy focus: {{ shard.focus }}
       - Seed bucket: {{ shard.bucket }}
       - Seed: {{ shard.seed }}
-      - Label: {{ shard.label }}
       - Workspace: {{ shard.workspace }}
 
       Shard contract:
       - Stay within {{ shard.workspace }} unless you are appending to the shared crash registry or notes.
-      - Treat `manifests/codex-fuzz-hierarchical-grouped.axes.yaml` as the source of truth for the reusable campaign axes.
-      - The staged reducers are derived automatically from the unique target/corpus pairs in this fanout.
-      - Use the label, target family, sanitizer, focus, and seed bucket to keep the campaign reproducible.
+      - Treat `manifests/codex-fuzz-catalog-grouped.csv` as the source of truth for your assignment.
+      - The staged reducers are derived automatically from the unique target/corpus pairs already present in the catalog.
+      - Use the catalog label, target family, sanitizer, focus, and seed bucket to keep the campaign reproducible.
       - Prefer high-signal crashers, assertion failures, memory safety bugs, or logic corruptions.
       - Record confirmed findings in `crashes/README.md` and copy minimal repro artifacts into `crashes/`.
       - Add short cross-shard lessons to `docs/campaign_notes.md` when they help other shards avoid duplicate work.
@@ -118,7 +115,7 @@ nodes:
     depends_on: [family_merge]
     timeout_seconds: 300
     prompt: |
-      Consolidate this hierarchical 64-shard fuzz campaign into a maintainer handoff.
+      Consolidate this hierarchical 128-shard catalog-backed fuzz campaign into a maintainer handoff.
       Start with campaign-wide status, then group the strongest findings by target family, and end with failed or quiet shards that need retargeting.
 
       Campaign status:

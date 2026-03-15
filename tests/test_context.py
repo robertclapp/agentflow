@@ -88,6 +88,49 @@ def _batched_pipeline(tmp_path: Path):
     )
 
 
+def _grouped_pipeline(tmp_path: Path):
+    return load_pipeline_from_data(
+        {
+            "name": "grouped-context",
+            "working_dir": str(tmp_path),
+            "nodes": [
+                {
+                    "id": "worker",
+                    "fanout": {
+                        "as": "shard",
+                        "values": [
+                            {"target": "libpng", "seed": 1001, "workspace": "agents/libpng_0"},
+                            {"target": "libpng", "seed": 1002, "workspace": "agents/libpng_1"},
+                            {"target": "sqlite", "seed": 2002, "workspace": "agents/sqlite_2"},
+                        ],
+                    },
+                    "agent": "codex",
+                    "prompt": "worker {{ shard.target }} seed {{ shard.seed }}",
+                },
+                {
+                    "id": "family_merge",
+                    "fanout": {
+                        "as": "family",
+                        "group_by": {
+                            "from": "worker",
+                            "fields": ["target"],
+                        },
+                    },
+                    "agent": "codex",
+                    "depends_on": ["worker"],
+                    "prompt": (
+                        "family={{ current.target }} ids={{ current.member_ids | join(',') }} :: "
+                        "{% for shard in current.members %}"
+                        "{{ shard.node_id }}@{{ shard.seed }}={{ nodes[shard.node_id].output or '(no output)' }};"
+                        "{% endfor %}"
+                    ),
+                },
+            ],
+        },
+        base_dir=tmp_path,
+    )
+
+
 def test_build_render_context_exposes_fanout_status_and_output_subsets(tmp_path: Path):
     pipeline = _fanout_pipeline(tmp_path)
     results = {
@@ -242,6 +285,115 @@ def test_render_node_prompt_can_use_current_node_and_batch_members(tmp_path: Pat
         "batch=1/2 range=1-2 ids=worker_0,worker_1 :: "
         "worker_0@agents/agent_0=alpha;"
         "worker_1@agents/agent_1=beta;"
+    )
+
+
+def test_build_render_context_exposes_current_node_metadata_for_grouped_reducers(tmp_path: Path):
+    pipeline = _grouped_pipeline(tmp_path)
+    results = {
+        "worker_0": NodeResult(node_id="worker_0", status=NodeStatus.COMPLETED, output="alpha"),
+        "worker_1": NodeResult(node_id="worker_1", status=NodeStatus.FAILED, output="beta"),
+        "worker_2": NodeResult(node_id="worker_2", status=NodeStatus.COMPLETED, output="gamma"),
+        "family_merge_0": NodeResult(node_id="family_merge_0"),
+        "family_merge_1": NodeResult(node_id="family_merge_1"),
+    }
+
+    context = build_render_context(pipeline, results, current_node=pipeline.node_map["family_merge_0"])
+
+    assert context["current"] == {
+        "id": "family_merge_0",
+        "agent": "codex",
+        "depends_on": ["worker_0", "worker_1"],
+        "fanout_group": "family_merge",
+        "index": 0,
+        "number": 1,
+        "count": 2,
+        "suffix": "0",
+        "value": {
+            "source_group": "worker",
+            "source_count": 3,
+            "size": 2,
+            "member_ids": ["worker_0", "worker_1"],
+            "members": [
+                {
+                    "index": 0,
+                    "number": 1,
+                    "count": 3,
+                    "suffix": "0",
+                    "value": {"target": "libpng", "seed": 1001, "workspace": "agents/libpng_0"},
+                    "template_id": "worker",
+                    "node_id": "worker_0",
+                    "target": "libpng",
+                    "seed": 1001,
+                    "workspace": "agents/libpng_0",
+                },
+                {
+                    "index": 1,
+                    "number": 2,
+                    "count": 3,
+                    "suffix": "1",
+                    "value": {"target": "libpng", "seed": 1002, "workspace": "agents/libpng_1"},
+                    "template_id": "worker",
+                    "node_id": "worker_1",
+                    "target": "libpng",
+                    "seed": 1002,
+                    "workspace": "agents/libpng_1",
+                },
+            ],
+            "target": "libpng",
+        },
+        "template_id": "family_merge",
+        "node_id": "family_merge_0",
+        "source_group": "worker",
+        "source_count": 3,
+        "size": 2,
+        "member_ids": ["worker_0", "worker_1"],
+        "members": [
+            {
+                "index": 0,
+                "number": 1,
+                "count": 3,
+                "suffix": "0",
+                "value": {"target": "libpng", "seed": 1001, "workspace": "agents/libpng_0"},
+                "template_id": "worker",
+                "node_id": "worker_0",
+                "target": "libpng",
+                "seed": 1001,
+                "workspace": "agents/libpng_0",
+            },
+            {
+                "index": 1,
+                "number": 2,
+                "count": 3,
+                "suffix": "1",
+                "value": {"target": "libpng", "seed": 1002, "workspace": "agents/libpng_1"},
+                "template_id": "worker",
+                "node_id": "worker_1",
+                "target": "libpng",
+                "seed": 1002,
+                "workspace": "agents/libpng_1",
+            },
+        ],
+        "target": "libpng",
+    }
+
+
+def test_render_node_prompt_can_use_current_node_and_group_members(tmp_path: Path):
+    pipeline = _grouped_pipeline(tmp_path)
+    results = {
+        "worker_0": NodeResult(node_id="worker_0", status=NodeStatus.COMPLETED, output="alpha"),
+        "worker_1": NodeResult(node_id="worker_1", status=NodeStatus.FAILED, output="beta"),
+        "worker_2": NodeResult(node_id="worker_2", status=NodeStatus.COMPLETED, output="gamma"),
+        "family_merge_0": NodeResult(node_id="family_merge_0"),
+        "family_merge_1": NodeResult(node_id="family_merge_1"),
+    }
+
+    rendered = render_node_prompt(pipeline, pipeline.node_map["family_merge_0"], results)
+
+    assert rendered == (
+        "family=libpng ids=worker_0,worker_1 :: "
+        "worker_0@1001=alpha;"
+        "worker_1@1002=beta;"
     )
 
 

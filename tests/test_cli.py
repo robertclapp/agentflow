@@ -377,6 +377,15 @@ def test_init_command_requires_destination_for_rendered_template_with_support_fi
     assert result.stderr == "Template `codex-fuzz-catalog` includes support files and requires a destination path.\n"
 
 
+def test_init_command_requires_destination_for_grouped_catalog_template_with_support_files():
+    result = runner.invoke(app, ["init", "--template", "codex-fuzz-catalog-grouped"])
+
+    assert result.exit_code == 1
+    assert result.stderr == (
+        "Template `codex-fuzz-catalog-grouped` includes support files and requires a destination path.\n"
+    )
+
+
 def test_init_command_prints_codex_fuzz_swarm_template():
     result = runner.invoke(app, ["init", "--template", "codex-fuzz-swarm"])
 
@@ -515,6 +524,8 @@ def test_templates_command_lists_bundled_templates():
         "(assets: `manifests/codex-fuzz-matrix-manifest-128.axes.yaml`; source: `examples/fuzz/codex-fuzz-matrix-manifest-128.yaml`; use: `agentflow init --template codex-fuzz-matrix-manifest-128`)\n"
         "- codex-fuzz-catalog: Configurable Codex fuzz campaign backed by a CSV shard catalog; defaults to 128 shards and keeps per-shard labels and workdirs in the manifest. "
         "(params: `shards=128`, `concurrency=32`, `name=codex-fuzz-catalog-<shards>`, `working_dir=./codex_fuzz_catalog_<shards>`; assets: `manifests/codex-fuzz-catalog.csv`; source: `examples/fuzz/codex-fuzz-catalog.yaml`; use: `agentflow init --template codex-fuzz-catalog`)\n"
+        "- codex-fuzz-catalog-grouped: Configurable hierarchical Codex fuzz campaign backed by a CSV shard catalog and staged reducers derived via `fanout.group_by`. "
+        "(params: `shards=128`, `concurrency=32`, `name=codex-fuzz-catalog-grouped-<shards>`, `working_dir=./codex_fuzz_catalog_grouped_<shards>`; assets: `manifests/codex-fuzz-catalog-grouped.csv`; source: `examples/fuzz/codex-fuzz-catalog-grouped.yaml`; use: `agentflow init --template codex-fuzz-catalog-grouped`)\n"
         "- codex-fuzz-batched: Configurable Codex fuzz swarm that uses `fanout.batches` to create scoped batch reducers for large shard counts. "
         "(params: `shards=128`, `batch_size=16`, `concurrency=32`, `name=codex-fuzz-batched-<shards>`, `working_dir=./codex_fuzz_batched_<shards>`; source: `examples/fuzz/codex-fuzz-batched.yaml`; use: `agentflow init --template codex-fuzz-batched`)\n"
         "- codex-fuzz-swarm: Configurable Codex fuzz swarm scaffold; defaults to 32 shards and scales cleanly to larger campaigns. "
@@ -680,6 +691,43 @@ def test_init_command_writes_rendered_template_and_support_files_to_destination(
     assert "\nname: custom-catalog-48\n" in f"\n{rendered_yaml}"
     assert "concurrency: 12" in rendered_yaml
     support_file = destination.parent / "manifests" / "codex-fuzz-catalog.csv"
+    assert support_file.exists()
+    support_lines = support_file.read_text(encoding="utf-8").strip().splitlines()
+    assert len(support_lines) == 49
+    assert support_lines[0] == "label,target,corpus,sanitizer,focus,bucket,seed,workspace"
+    assert support_lines[1].startswith("libpng/asan/parser/seed_001,libpng,png,asan,parser,seed_001,4101,agents/")
+    assert support_lines[-1].startswith("sqlite/ubsan/stateful/seed_003,sqlite,sql,ubsan,stateful,seed_003,4103,agents/")
+
+
+def test_init_command_writes_grouped_catalog_template_and_support_files_to_destination(tmp_path):
+    destination = tmp_path / "templates" / "fuzz-catalog-grouped.yaml"
+
+    result = runner.invoke(
+        app,
+        [
+            "init",
+            str(destination),
+            "--template",
+            "codex-fuzz-catalog-grouped",
+            "--set",
+            "shards=48",
+            "--set",
+            "concurrency=12",
+            "--set",
+            "name=custom-catalog-grouped-48",
+            "--set",
+            "working_dir=./custom_catalog_grouped",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout == f"Wrote `codex-fuzz-catalog-grouped` template to `{destination}`.\n"
+    rendered_yaml = destination.read_text(encoding="utf-8")
+    assert "\nname: custom-catalog-grouped-48\n" in f"\n{rendered_yaml}"
+    assert "concurrency: 12" in rendered_yaml
+    assert "group_by:" in rendered_yaml
+    assert "{{ current.member_ids | join(\", \") }}" in rendered_yaml
+    support_file = destination.parent / "manifests" / "codex-fuzz-catalog-grouped.csv"
     assert support_file.exists()
     support_lines = support_file.read_text(encoding="utf-8").strip().splitlines()
     assert len(support_lines) == 49

@@ -303,7 +303,10 @@ nodes:
     assert pipeline.node_map["family_merge_1"].prompt == "merge sqlite sql"
     assert pipeline.node_map["family_merge_0"].target.cwd == str((workspace / "reducers" / "libpng" / "0").resolve())
     assert pipeline.node_map["family_merge_1"].target.cwd == str((workspace / "reducers" / "sqlite" / "1").resolve())
-    assert pipeline.node_map["family_merge_0"].depends_on == ["fuzz_0", "fuzz_1", "fuzz_2", "fuzz_3"]
+    assert pipeline.node_map["family_merge_0"].fanout_member["member_ids"] == ["fuzz_0", "fuzz_1"]
+    assert pipeline.node_map["family_merge_1"].fanout_member["member_ids"] == ["fuzz_2", "fuzz_3"]
+    assert pipeline.node_map["family_merge_0"].depends_on == ["fuzz_0", "fuzz_1"]
+    assert pipeline.node_map["family_merge_1"].depends_on == ["fuzz_2", "fuzz_3"]
 
 
 def test_load_pipeline_from_text_expands_batched_fanout_before_resolving_relative_cwds(tmp_path):

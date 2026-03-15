@@ -780,7 +780,9 @@ def _resolve_grouped_fanout_members(
         )
 
     grouped_members: list[dict[str, Any]] = []
-    seen: set[Any] = set()
+    grouped_indexes: dict[Any, int] = {}
+    scoped_metadata_fields = {"source_group", "source_count", "size", "member_ids", "members"}
+    source_count = len(members)
     for member in members:
         grouped_member: dict[str, Any] = {}
         for field in group_by.fields:
@@ -790,11 +792,40 @@ def _resolve_grouped_fanout_members(
                     "does not expose that field"
                 )
             grouped_member[field] = member[field]
+
+        conflicting_fields = sorted(scoped_metadata_fields.intersection(grouped_member))
+        if conflicting_fields:
+            joined = ", ".join(f"`{field}`" for field in conflicting_fields)
+            raise ValueError(
+                f"`fanout.group_by.fields` cannot use reserved scoped reducer metadata fields {joined}"
+            )
+
         frozen = _freeze_fanout_value(grouped_member)
-        if frozen in seen:
+        node_id = member.get("node_id")
+        if not isinstance(node_id, str) or not node_id:
+            raise ValueError(
+                f"fanout group `{group_by.from_}` does not expose `node_id`, so `fanout.group_by` "
+                "cannot derive scoped reducer dependencies"
+            )
+
+        grouped_index = grouped_indexes.get(frozen)
+        if grouped_index is None:
+            grouped_indexes[frozen] = len(grouped_members)
+            grouped_members.append(
+                {
+                    "source_group": group_by.from_,
+                    "source_count": source_count,
+                    "size": 1,
+                    "member_ids": [node_id],
+                    "members": [dict(member)],
+                    **grouped_member,
+                }
+            )
             continue
-        seen.add(frozen)
-        grouped_members.append(grouped_member)
+
+        grouped_members[grouped_index]["size"] += 1
+        grouped_members[grouped_index]["member_ids"].append(node_id)
+        grouped_members[grouped_index]["members"].append(dict(member))
     return grouped_members
 
 
