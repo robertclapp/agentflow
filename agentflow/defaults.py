@@ -467,7 +467,7 @@ def _render_codex_fuzz_matrix_manifest_template(values: Mapping[str, str] | None
 # Usage:
 #   agentflow template-presets
 #   agentflow init fuzz-matrix-manifest.yaml --template codex-fuzz-matrix-manifest
-#   agentflow init fuzz-browser-128.yaml --template codex-fuzz-matrix-manifest --set preset=browser-surface --set bucket_count=8 --set concurrency=32
+#   agentflow init fuzz-browser-manifest.yaml --template codex-fuzz-matrix-manifest --set preset=browser-surface --set bucket_count=8 --set concurrency=32
 #   agentflow init fuzz-matrix-manifest-128.yaml --template codex-fuzz-matrix-manifest --set bucket_count=8 --set concurrency=32
 #   agentflow inspect fuzz-matrix-manifest.yaml --output summary
 #   agentflow run fuzz-matrix-manifest.yaml --preflight never
