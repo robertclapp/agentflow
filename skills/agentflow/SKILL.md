@@ -1,196 +1,215 @@
-# AgentFlow Skill
+---
+name: agentflow
+description: Build and run multi-agent pipelines using AgentFlow. Use when the user wants to orchestrate codex, claude, or kimi agents in parallel, in sequence, or in iterative loops. Trigger when the user mentions multi-agent workflows, fan-out tasks, code review pipelines, iterative implementation loops, running agents on EC2/ECS, or any task that needs multiple AI agents coordinated together. Also trigger for "agentflow", "pipeline", "graph of agents", "fanout", "shard", or "run codex on remote".
+---
 
-AgentFlow orchestrates codex, claude, and kimi agents in dependency-aware graphs. Agents run locally, via SSH, on EC2, or on ECS Fargate.
+# AgentFlow
 
-## Core API (2 imports for simple, 4 for fanout)
+Build multi-agent pipelines where codex, claude, and kimi work together in dependency graphs with parallel fanout, iterative cycles, and remote execution.
+
+## Quick Start
 
 ```python
-from agentflow import Graph, codex, claude, kimi, fanout, merge
-```
+from agentflow import Graph, codex, claude
 
-## Basic Graph
-
-```python
-with Graph("my-pipeline", concurrency=3) as g:
+with Graph("review-pipeline", concurrency=3) as g:
     plan = codex(task_id="plan", prompt="Plan the work.", tools="read_only")
     impl = claude(task_id="impl", prompt="Implement:\n{{ nodes.plan.output }}", tools="read_write")
     review = codex(task_id="review", prompt="Review:\n{{ nodes.impl.output }}")
+    plan >> impl >> review
 
-    plan >> impl >> review  # dependency chain
-
-print(g.to_json())  # outputs JSON, pipe to `agentflow run`
+print(g.to_json())
 ```
 
-Run: `python pipeline.py | agentflow run -` or `agentflow run pipeline.py`
+Run: `agentflow run pipeline.py`
+
+## Imports
+
+```python
+from agentflow import Graph, codex, claude, kimi  # basic
+from agentflow import fanout, merge               # for parallel shards
+```
+
+## Nodes
+
+Create nodes with `codex()`, `claude()`, or `kimi()`. Required: `task_id`, `prompt`.
+
+```python
+codex(
+    task_id="name",              # unique ID (required)
+    prompt="...",                 # Jinja2 template (required)
+    tools="read_only",           # "read_only" | "read_write"
+    timeout_seconds=300,
+    retries=1,
+    success_criteria=[{"kind": "output_contains", "value": "PASS"}],
+    target={...},                # execution target (local/ssh/ec2/ecs)
+    env={"KEY": "val"},
+)
+```
+
+## Dependencies
+
+Use `>>` to set execution order:
+
+```python
+plan >> [impl, review]       # plan before impl AND review (parallel)
+[impl, review] >> merge      # both before merge
+```
 
 ## Template Variables
 
-In prompts, use Jinja2:
-- `{{ nodes.<task_id>.output }}` -- output of a completed node
-- `{{ nodes.<task_id>.status }}` -- "completed", "failed", etc.
-- `{{ fanouts.<group>.nodes }}` -- all members of a fanout group
-- `{{ item.number }}`, `{{ item.suffix }}` -- fanout member fields
+Prompts are Jinja2 templates rendered at runtime:
 
-## Fanout (parallel shards)
-
-`fanout(node, source)` wraps a node to run as many parallel copies:
-
-```python
-# Count: 128 identical shards
-shards = fanout(codex(task_id="shard", prompt="Shard {{ item.number }}/{{ item.count }}"), 128)
-
-# Values: one per item
-reviews = fanout(codex(task_id="review", prompt="Review {{ item.repo }}"),
-    [{"repo": "api"}, {"repo": "billing"}, {"repo": "auth"}])
-
-# Matrix: cartesian product
-fuzz = fanout(codex(task_id="fuzz", prompt="{{ item.target }} {{ item.sanitizer }}"),
-    {"target": [{"name": "libpng"}, {"name": "sqlite"}],
-     "check": [{"sanitizer": "asan"}, {"sanitizer": "ubsan"}]})
+```
+{{ nodes.plan.output }}              # output of completed node
+{{ nodes.plan.status }}              # "completed", "failed"
+{{ fanouts.shards.nodes }}           # all fanout members
+{{ fanouts.shards.summary.completed }}
+{{ item.number }}                    # current fanout member fields
 ```
 
-### item fields (fanout)
+## Fanout (Parallel Shards)
 
-| Field | Example |
-|---|---|
-| `item.index` | 0, 1, 2 |
-| `item.number` | 1, 2, 3 |
-| `item.count` | total |
-| `item.suffix` | "000", "001" |
-| `item.node_id` | "shard_001" |
-| `item.<key>` | lifted from value dicts |
+`fanout(node, source)` -- source type determines mode:
+
+```python
+# int = count (N identical copies)
+shards = fanout(codex(task_id="shard", prompt="Shard {{ item.number }}/{{ item.count }}"), 128)
+
+# list = values (one per item)
+reviews = fanout(
+    codex(task_id="review", prompt="Review {{ item.repo }}"),
+    [{"repo": "api"}, {"repo": "billing"}],
+)
+
+# dict = matrix (cartesian product)
+fuzz = fanout(
+    codex(task_id="fuzz", prompt="{{ item.target }} + {{ item.sanitizer }}"),
+    {"lib": [{"target": "libpng"}], "check": [{"sanitizer": "asan"}, {"sanitizer": "ubsan"}]},
+)
+```
+
+### item fields
+
+| Field | Type | Example |
+|---|---|---|
+| `item.index` | int | 0, 1, 2 |
+| `item.number` | int | 1, 2, 3 (1-indexed) |
+| `item.count` | int | total copies |
+| `item.suffix` | str | "000", "001" (zero-padded) |
+| `item.node_id` | str | "shard_001" |
+| `item.<key>` | Any | dict keys lifted from values |
 
 ### derive (computed fields)
 
 ```python
 fanout(node, 128, derive={"workspace": "agents/{{ item.suffix }}"})
-# item.workspace = "agents/000", "agents/001", ...
 ```
 
-## Merge (reduce fanout results)
+## Merge (Reduce Fanout)
 
-`merge(node, source_node, by=[...] | size=N)`:
+`merge(node, source, by=[...] | size=N)`:
 
 ```python
-# Batch: one reducer per 16 shards
-batch = merge(codex(task_id="batch", prompt="Reduce {{ item.start_number }}-{{ item.end_number }}"),
-    shards, size=16)
+# Batch reduce: one reducer per 16 shards
+batch = merge(
+    codex(task_id="batch", prompt="Reduce shards {{ item.start_number }}-{{ item.end_number }}"),
+    shards, size=16,
+)
 
-# Group by field
-family = merge(codex(task_id="family", prompt="Reduce {{ item.target }}"),
-    fuzz, by=["target"])
+# Group by field value
+family = merge(
+    codex(task_id="family", prompt="Reduce {{ item.target }}"),
+    fuzz, by=["target"],
+)
 ```
 
-### item fields (merge)
+Merge adds: `item.member_ids`, `item.members`, `item.size`, `item.source_group`.
+At runtime: `item.scope.nodes`, `item.scope.outputs`, `item.scope.summary`, `item.scope.with_output`.
 
-All fanout fields plus: `item.source_group`, `item.member_ids`, `item.members`, `item.size`.
+## Cycles (Iterative Loops)
 
-At runtime: `item.scope.nodes`, `item.scope.outputs`, `item.scope.summary.completed`, `item.scope.with_output`, `item.scope.without_output`.
-
-## Cycles (iterative loops)
+Use `on_failure` back-edges for retry-until-success patterns:
 
 ```python
 with Graph("iterative", max_iterations=5) as g:
-    write = codex(task_id="write", prompt="Write code.\n{% if nodes.review.output %}Fix: {{ nodes.review.output }}{% endif %}")
-    review = claude(task_id="review", prompt="Review:\n{{ nodes.write.output }}",
-        success_criteria=[{"kind": "output_contains", "value": "LGTM"}])
+    write = codex(task_id="write", prompt=(
+        "Write the code.\n"
+        "{% if nodes.review.output %}Fix: {{ nodes.review.output }}{% endif %}"
+    ), tools="read_write")
+    review = claude(task_id="review", prompt=(
+        "Review:\n{{ nodes.write.output }}\n"
+        "If complete, say LGTM. Otherwise list issues."
+    ), success_criteria=[{"kind": "output_contains", "value": "LGTM"}])
+    done = codex(task_id="done", prompt="Summarize:\n{{ nodes.write.output }}")
 
     write >> review
-    review.on_failure >> write  # loop back until LGTM or max_iterations
+    review.on_failure >> write   # loop back until LGTM
+    review >> done               # exit on success
 ```
 
 ## Execution Targets
 
 ### Local (default)
-```python
-codex(task_id="t", prompt="...", tools="read_write")
-```
+No `target` needed. Runs on the host machine.
 
 ### SSH
 ```python
-codex(task_id="t", prompt="...", target={"kind": "ssh", "host": "server", "username": "deploy"})
+target={"kind": "ssh", "host": "server", "username": "deploy"}
 ```
 
 ### EC2 (auto-discovers AMI, key pair, VPC)
 ```python
-codex(task_id="t", prompt="...", target={
-    "kind": "ec2",
-    "region": "us-east-1",         # only required field
-    "instance_type": "t3.medium",  # optional
-    "terminate": True,             # auto-terminate after (default)
-    "snapshot": False,             # create AMI before terminate
-    "shared": "dev-box",          # reuse instance across nodes
-})
+target={"kind": "ec2", "region": "us-east-1"}
+# Optional: instance_type, terminate, snapshot, shared, spot
 ```
 
-### ECS Fargate (auto-discovers VPC, builds image)
+### ECS Fargate (auto-discovers VPC, builds agent image)
 ```python
-codex(task_id="t", prompt="...", target={
-    "kind": "ecs",
-    "region": "us-east-1",         # only required field
-    "image": "ubuntu:24.04",       # optional base image
-    "install_agents": ["codex"],   # auto-install in image
-    "cpu": "2048",                 # optional
-    "memory": "4096",              # optional
-})
+target={"kind": "ecs", "region": "us-east-1"}
+# Optional: image, cpu, memory, install_agents, cluster
 ```
 
 ### Shared instances
-Nodes with the same `shared` ID reuse one instance:
+Same `shared` ID = same instance across nodes:
+
 ```python
-plan = codex(task_id="plan", prompt="...", target={"kind": "ec2", "shared": "box"})
-impl = codex(task_id="impl", prompt="...", target={"kind": "ec2", "shared": "box"})
-plan >> impl  # same EC2 instance, files persist between nodes
+plan = codex(task_id="plan", ..., target={"kind": "ec2", "shared": "dev"})
+impl = codex(task_id="impl", ..., target={"kind": "ec2", "shared": "dev"})
+# Both run on same EC2, files persist between them
 ```
 
-## Scratchboard (shared memory)
+## Scratchboard
+
+Enable shared memory across all agents:
 
 ```python
 with Graph("campaign", scratchboard=True) as g:
-    shards = fanout(codex(task_id="fuzz", prompt="..."), 128)
+    ...
 ```
 
-All agents get a `scratchboard.md` file. They can read it for context from other agents and append critical findings. The orchestrator merges writes from remote nodes.
+All agents get a `scratchboard.md` file to read context and write findings.
 
 ## Graph Options
 
 ```python
-Graph(
-    "name",
+Graph("name",
     concurrency=4,          # max parallel nodes
     fail_fast=False,         # skip downstream on failure
-    max_iterations=10,       # cycle limit
+    max_iterations=10,       # cycle iteration limit
     scratchboard=False,      # shared memory file
-    node_defaults={...},     # applied to all nodes
+    node_defaults={...},     # defaults for all nodes
     agent_defaults={...},    # per-agent defaults
-)
-```
-
-## Node Options
-
-```python
-codex(
-    task_id="name",          # unique ID
-    prompt="...",            # Jinja2 template
-    tools="read_only",      # or "read_write"
-    model="gpt-5-codex",    # optional model override
-    timeout_seconds=300,     # optional timeout
-    retries=1,              # optional retry count
-    success_criteria=[{"kind": "output_contains", "value": "PASS"}],
-    target={...},           # execution target
-    env={"KEY": "val"},     # environment variables
-    schedule={"every_seconds": 600, "until_fanout_settles_from": "shards"},  # periodic
 )
 ```
 
 ## CLI
 
 ```bash
-agentflow run pipeline.py           # run a pipeline
+agentflow run pipeline.py                # run pipeline
 agentflow run pipeline.py --output summary
-agentflow validate pipeline.py      # check without running
-agentflow inspect pipeline.py       # show expanded graph
-agentflow templates                  # list bundled templates
-agentflow init > pipeline.py        # scaffold a starter pipeline
-agentflow serve                      # web UI
+agentflow inspect pipeline.py            # show graph structure
+agentflow validate pipeline.py           # check without running
+agentflow templates                       # list starter templates
+agentflow init > pipeline.py             # scaffold starter
 ```
