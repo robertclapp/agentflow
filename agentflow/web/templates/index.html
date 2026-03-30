@@ -4,89 +4,720 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>AgentFlow</title>
-    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap"
+    >
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0d1117;
+        --panel: #161b22;
+        --panel-alt: #11161d;
+        --border: rgba(201, 209, 217, 0.1);
+        --border-strong: rgba(88, 166, 255, 0.28);
+        --text: #c9d1d9;
+        --muted: #8b949e;
+        --link: #58a6ff;
+        --success: #3fb950;
+        --warning: #d29922;
+        --danger: #f85149;
+        --queued: #a371f7;
+        --shadow: 0 24px 48px rgba(0, 0, 0, 0.36);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        min-height: 100%;
+      }
+
+      body {
+        margin: 0;
+        font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(88, 166, 255, 0.1), transparent 26%),
+          radial-gradient(circle at top right, rgba(63, 185, 80, 0.06), transparent 22%),
+          linear-gradient(180deg, #0d1117 0%, #0d1117 100%);
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(201, 209, 217, 0.02) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(201, 209, 217, 0.02) 1px, transparent 1px);
+        background-size: 32px 32px;
+        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.45), transparent 92%);
+      }
+
+      a {
+        color: var(--link);
+      }
+
+      button,
+      input,
+      textarea {
+        font: inherit;
+      }
+
+      .app-shell {
+        min-height: 100vh;
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 20px;
+      }
+
+      .brand {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .brand h1 {
+        margin: 0;
+        font-size: clamp(2rem, 3vw, 2.5rem);
+        font-weight: 800;
+        letter-spacing: -0.08em;
+        color: #f0f6fc;
+      }
+
+      .status-strip {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(124px, 1fr));
+        gap: 12px;
+        width: min(460px, 100%);
+      }
+
+      .metric {
+        padding: 14px 16px;
+        border-radius: 18px;
+        border: 1px solid var(--border);
+        background:
+          linear-gradient(180deg, rgba(88, 166, 255, 0.06), transparent 44%),
+          linear-gradient(180deg, rgba(22, 27, 34, 0.98), rgba(13, 17, 23, 0.98));
+        box-shadow: inset 0 1px 0 rgba(240, 246, 252, 0.03);
+      }
+
+      .metric span {
+        display: block;
+        margin-bottom: 6px;
+        color: var(--muted);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .metric strong {
+        color: #f0f6fc;
+        font-size: 1.4rem;
+        font-weight: 700;
+      }
+
+      .banner {
+        padding: 12px 14px;
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        background: rgba(22, 27, 34, 0.9);
+      }
+
+      .banner.success {
+        border-color: rgba(63, 185, 80, 0.4);
+      }
+
+      .banner.error {
+        border-color: rgba(248, 81, 73, 0.45);
+      }
+
+      .hidden {
+        display: none;
+      }
+
+      .layout {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(280px, 1fr) minmax(0, 2fr) minmax(0, 2fr);
+        gap: 18px;
+      }
+
+      .history-panel,
+      .graph-panel,
+      .detail-panel {
+        min-width: 0;
+      }
+
+      .panel {
+        position: relative;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border-radius: 22px;
+        border: 1px solid var(--border);
+        background:
+          linear-gradient(180deg, rgba(88, 166, 255, 0.04), transparent 22%),
+          linear-gradient(180deg, rgba(22, 27, 34, 0.98), rgba(13, 17, 23, 0.98));
+        box-shadow: var(--shadow);
+      }
+
+      .panel::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        box-shadow: inset 0 1px 0 rgba(240, 246, 252, 0.03);
+      }
+
+      .panel-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 18px 20px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .panel-title {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 0;
+      }
+
+      .panel-title h2 {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+      }
+
+      .panel-title strong {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #f0f6fc;
+      }
+
+      .button-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+
+      button,
+      .search {
+        color: var(--text);
+        background: rgba(13, 17, 23, 0.92);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 10px 12px;
+        transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+      }
+
+      button:hover,
+      .search:focus {
+        outline: none;
+        border-color: var(--border-strong);
+        box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.12);
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+        cursor: pointer;
+      }
+
+      button.primary {
+        color: #0d1117;
+        background: var(--link);
+        border-color: transparent;
+        font-weight: 700;
+      }
+
+      .search-row,
+      .artifact-rail {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        padding: 0 20px 16px;
+      }
+
+      .search-row {
+        border-bottom: 1px solid var(--border);
+      }
+
+      .search {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(88, 166, 255, 0.2);
+        background: rgba(88, 166, 255, 0.08);
+        color: #f0f6fc;
+        font-size: 0.74rem;
+        text-transform: capitalize;
+        white-space: nowrap;
+      }
+
+      .status-pill::before {
+        content: "";
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: currentColor;
+        opacity: 0.8;
+      }
+
+      .small {
+        color: var(--muted);
+        font-size: 0.76rem;
+        line-height: 1.55;
+      }
+
+      .mono {
+        font-family: inherit;
+      }
+
+      #runs,
+      #detail {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        padding: 18px 20px 20px;
+      }
+
+      .run-item {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px 12px;
+        padding: 16px;
+        margin-bottom: 12px;
+        border-radius: 18px;
+        border: 1px solid var(--border);
+        background:
+          linear-gradient(180deg, rgba(88, 166, 255, 0.04), transparent 38%),
+          linear-gradient(180deg, rgba(13, 17, 23, 0.82), rgba(22, 27, 34, 0.84));
+        transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+      }
+
+      .run-item:hover {
+        transform: translateY(-1px);
+        border-color: rgba(88, 166, 255, 0.22);
+      }
+
+      .run-item.active {
+        border-color: rgba(88, 166, 255, 0.42);
+        box-shadow: inset 0 0 0 1px rgba(88, 166, 255, 0.12);
+      }
+
+      .run-item h3 {
+        margin: 0;
+        font-size: 0.9rem;
+        line-height: 1.35;
+        color: #f0f6fc;
+      }
+
+      .run-item > div:nth-of-type(1) {
+        grid-column: 1 / -1;
+        order: 4;
+        font-size: 0.68rem;
+        letter-spacing: 0.02em;
+      }
+
+      .run-item > div:nth-of-type(2) {
+        grid-column: 2;
+        grid-row: 1;
+        justify-self: end;
+        max-width: 220px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(88, 166, 255, 0.18);
+        background: rgba(88, 166, 255, 0.08);
+        color: #f0f6fc;
+        font-size: 0.68rem;
+      }
+
+      .run-item > div:nth-of-type(3) {
+        font-size: 0.76rem;
+        color: var(--text);
+      }
+
+      .run-item .button-row {
+        grid-column: 2;
+        grid-row: 2 / span 2;
+        justify-self: end;
+        margin-top: 0 !important;
+      }
+
+      .run-item .button-row button {
+        padding: 8px 10px;
+      }
+
+      .graph-stage {
+        position: relative;
+        flex: 1;
+        min-height: 0;
+        margin: 0 20px 20px;
+        overflow: hidden;
+        border-radius: 20px;
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(13, 17, 23, 0.82), rgba(1, 4, 9, 0.96));
+      }
+
+      .graph-backdrop {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+      }
+
+      #graph {
+        position: relative;
+        z-index: 1;
+        width: 100%;
+        height: 100%;
+        min-height: 100%;
+        overflow: auto;
+        padding: 24px;
+      }
+
+      svg.graph-lines {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+
+      .graph-node {
+        position: absolute;
+        width: 210px;
+        padding: 14px;
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        background:
+          linear-gradient(180deg, rgba(88, 166, 255, 0.06), transparent 40%),
+          linear-gradient(180deg, rgba(22, 27, 34, 0.98), rgba(13, 17, 23, 0.98));
+        box-shadow: 0 16px 24px rgba(0, 0, 0, 0.28);
+        cursor: pointer;
+      }
+
+      .graph-node h3 {
+        margin: 0 0 6px;
+        font-size: 0.9rem;
+        color: #f0f6fc;
+      }
+
+      .graph-node p {
+        margin: 3px 0;
+        color: var(--muted);
+        font-size: 0.7rem;
+        line-height: 1.5;
+      }
+
+      .graph-node.pending {
+        border-color: rgba(139, 148, 158, 0.3);
+      }
+
+      .graph-node.queued {
+        border-color: rgba(163, 113, 247, 0.48);
+      }
+
+      .graph-node.running,
+      .graph-node.retrying {
+        border-color: rgba(210, 153, 34, 0.55);
+      }
+
+      .graph-node.completed {
+        border-color: rgba(63, 185, 80, 0.52);
+      }
+
+      .graph-node.failed,
+      .graph-node.skipped,
+      .graph-node.cancelled {
+        border-color: rgba(248, 81, 73, 0.52);
+      }
+
+      .graph-node.selected {
+        outline: 2px solid rgba(88, 166, 255, 0.65);
+        outline-offset: 0;
+      }
+
+      .artifact-rail {
+        flex-wrap: wrap;
+      }
+
+      .artifact-button {
+        padding: 8px 10px;
+        font-size: 0.7rem;
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .summary-card,
+      .trace-item {
+        padding: 14px;
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        background:
+          linear-gradient(180deg, rgba(88, 166, 255, 0.03), transparent 34%),
+          rgba(13, 17, 23, 0.72);
+      }
+
+      .summary-card strong {
+        display: block;
+        margin-top: 6px;
+        color: #f0f6fc;
+        font-size: 0.92rem;
+      }
+
+      .trace-item {
+        margin-bottom: 12px;
+      }
+
+      .trace-item h4 {
+        margin: 0 0 10px;
+        color: var(--muted);
+        font-size: 0.74rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .output-box,
+      .trace-item pre {
+        margin: 0;
+        padding: 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(201, 209, 217, 0.08);
+        background: rgba(1, 4, 9, 0.84);
+        color: var(--text);
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow: auto;
+      }
+
+      ::-webkit-scrollbar {
+        width: 12px;
+        height: 12px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: rgba(13, 17, 23, 0.8);
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: rgba(139, 148, 158, 0.28);
+        border: 2px solid rgba(13, 17, 23, 0.85);
+        border-radius: 999px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background: rgba(139, 148, 158, 0.42);
+      }
+
+      @media (max-width: 1180px) {
+        .layout {
+          grid-template-columns: minmax(300px, 1fr) minmax(0, 2fr);
+          grid-template-areas:
+            "history graph"
+            "detail detail";
+        }
+
+        .history-panel {
+          grid-area: history;
+        }
+
+        .graph-panel {
+          grid-area: graph;
+        }
+
+        .detail-panel {
+          grid-area: detail;
+        }
+      }
+
+      @media (max-width: 860px) {
+        .app-shell {
+          padding: 16px;
+        }
+
+        .topbar {
+          flex-direction: column;
+        }
+
+        .status-strip {
+          width: 100%;
+        }
+
+        .layout {
+          grid-template-columns: 1fr;
+          grid-template-areas:
+            "history"
+            "graph"
+            "detail";
+        }
+
+        .panel-header,
+        #runs,
+        #detail,
+        .search-row,
+        .artifact-rail {
+          padding-left: 16px;
+          padding-right: 16px;
+        }
+
+        .graph-stage {
+          margin: 0 16px 16px;
+        }
+
+        .search-row {
+          flex-direction: column;
+          align-items: stretch;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .status-strip {
+          grid-template-columns: 1fr;
+        }
+
+        .run-item {
+          grid-template-columns: 1fr;
+        }
+
+        .run-item > div:nth-of-type(2),
+        .run-item .button-row {
+          grid-column: 1;
+          grid-row: auto;
+          justify-self: start;
+        }
+
+        .summary-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
   </head>
   <body>
-    <header class="topbar">
-      <div>
-        <h1>AgentFlow</h1>
-        <p>Production-style orchestration for Codex, Claude, and Kimi DAGs.</p>
-      </div>
-      <div class="status-strip">
-        <div class="metric"><span>Total runs</span><strong id="metric-total">0</strong></div>
-        <div class="metric"><span>Queued</span><strong id="metric-queued">0</strong></div>
-        <div class="metric"><span>Running</span><strong id="metric-running">0</strong></div>
-      </div>
-    </header>
-
-    <div id="banner" class="banner hidden"></div>
-
-    <main class="layout">
-      <section class="panel editor">
-        <div class="panel-header">
-          <div>
-            <h2>Pipeline</h2>
-            <div class="small">JSON pipeline definition</div>
-          </div>
-          <div class="button-row">
-            <button id="load-example">Load example</button>
-            <button id="validate-pipeline">Validate</button>
-            <button id="run-pipeline" class="primary">Run pipeline</button>
-          </div>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <h1>AgentFlow</h1>
         </div>
-        <div class="editor-controls">
-          <label class="small" for="pipeline-base-dir">Base dir for relative paths</label>
-          <input id="pipeline-base-dir" class="search mono path-input" type="text" value="{{ base_dir }}" placeholder="/path/to/repo">
+        <div class="status-strip">
+          <div class="metric"><span>Total Runs</span><strong id="metric-total">0</strong></div>
+          <div class="metric"><span>Queued</span><strong id="metric-queued">0</strong></div>
+          <div class="metric"><span>Live</span><strong id="metric-running">0</strong></div>
         </div>
-        <textarea id="pipeline-input">{{ example }}</textarea>
-      </section>
+      </header>
 
-      <section class="panel graph-panel">
-        <div class="panel-header">
-          <div>
-            <h2>DAG</h2>
-            <div class="small" id="run-meta">No run selected</div>
-          </div>
-          <div class="button-row">
-            <span id="run-status" class="status-pill">idle</span>
-            <button id="cancel-run">Cancel</button>
-            <button id="rerun-run">Rerun</button>
-          </div>
-        </div>
-        <div id="graph"></div>
-      </section>
+      <div id="banner" class="banner hidden"></div>
 
-      <section class="panel runs-panel">
-        <div class="panel-header">
-          <div>
-            <h2>Runs</h2>
-            <div class="small">Persistent run history</div>
+      <main class="layout">
+        <aside class="panel history-panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <h2>Run History</h2>
+              <strong>Recent executions</strong>
+            </div>
           </div>
-          <div class="button-row">
-            <input id="run-search" class="search" type="search" placeholder="Filter runs">
-            <button id="refresh-runs">Refresh</button>
+          <div class="search-row">
+            <input id="run-search" class="search" type="search" placeholder="Search runs, status, or IDs">
+            <button id="refresh-runs" type="button">Refresh</button>
           </div>
-        </div>
-        <div id="runs"></div>
-      </section>
+          <div id="runs"></div>
+        </aside>
 
-      <section class="panel detail-panel">
-        <div class="panel-header">
-          <div>
-            <h2>Node detail</h2>
-            <div class="small" id="selected-node">None selected</div>
+        <section class="panel graph-panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <h2>Execution Graph</h2>
+              <strong id="run-meta">No run selected</strong>
+            </div>
+            <div class="button-row">
+              <span id="run-status" class="status-pill">idle</span>
+              <button id="cancel-run" type="button">Cancel</button>
+              <button id="rerun-run" type="button">Rerun</button>
+            </div>
           </div>
-          <div class="button-row">
-            <button data-artifact="output.txt" class="artifact-button">Output</button>
-            <button data-artifact="launch.json" class="artifact-button">Launch</button>
-            <button data-artifact="stdout.log" class="artifact-button">Stdout</button>
-            <button data-artifact="stderr.log" class="artifact-button">Stderr</button>
-            <button data-artifact="trace.jsonl" class="artifact-button">Trace</button>
+          <div class="graph-stage">
+            <svg class="graph-backdrop" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <defs>
+                <pattern id="graph-grid" width="10" height="10" patternUnits="userSpaceOnUse">
+                  <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#c9d1d9" stroke-opacity="0.05" stroke-width="0.4"></path>
+                </pattern>
+                <radialGradient id="graph-glow" cx="50%" cy="0%" r="90%">
+                  <stop offset="0%" stop-color="#58a6ff" stop-opacity="0.16"></stop>
+                  <stop offset="52%" stop-color="#58a6ff" stop-opacity="0.04"></stop>
+                  <stop offset="100%" stop-color="#0d1117" stop-opacity="0"></stop>
+                </radialGradient>
+              </defs>
+              <rect width="100" height="100" fill="url(#graph-glow)"></rect>
+              <rect width="100" height="100" fill="url(#graph-grid)"></rect>
+            </svg>
+            <div id="graph" aria-live="polite"></div>
           </div>
-        </div>
-        <div id="detail"></div>
-      </section>
-    </main>
+        </section>
+
+        <aside class="panel detail-panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <h2>Node Detail</h2>
+              <strong id="selected-node">None selected</strong>
+            </div>
+          </div>
+          <div class="artifact-rail">
+            <button data-artifact="output.txt" class="artifact-button" type="button">Output</button>
+            <button data-artifact="launch.json" class="artifact-button" type="button">Launch</button>
+            <button data-artifact="stdout.log" class="artifact-button" type="button">Stdout</button>
+            <button data-artifact="stderr.log" class="artifact-button" type="button">Stderr</button>
+            <button data-artifact="trace.jsonl" class="artifact-button" type="button">Trace</button>
+          </div>
+          <div id="detail"></div>
+        </aside>
+      </main>
+
+      <button id="load-example" type="button" hidden>Load example</button>
+      <button id="validate-pipeline" type="button" hidden>Validate</button>
+      <button id="run-pipeline" type="button" hidden>Run pipeline</button>
+      <input id="pipeline-base-dir" type="hidden" value="{{ base_dir }}">
+      <textarea id="pipeline-input" hidden>{{ example }}</textarea>
+    </div>
 
     <script src="/static/app.js"></script>
   </body>
