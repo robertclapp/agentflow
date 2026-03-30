@@ -89,6 +89,7 @@ class Graph:
         fail_fast: bool = False,
         max_iterations: int = 10,
         scratchboard: bool = False,
+        use_worktree: bool = False,
         node_defaults: dict[str, Any] | None = None,
         agent_defaults: dict[str | AgentKind, dict[str, Any]] | None = None,
         local_target_defaults: dict[str, Any] | LocalTarget | None = None,
@@ -100,6 +101,7 @@ class Graph:
         self.fail_fast = fail_fast
         self.max_iterations = max_iterations
         self.scratchboard = scratchboard
+        self.use_worktree = use_worktree
         self.node_defaults = node_defaults
         self.agent_defaults = agent_defaults
         self.local_target_defaults = local_target_defaults
@@ -138,6 +140,7 @@ class Graph:
         payload["fail_fast"] = self.fail_fast
         payload["max_iterations"] = self.max_iterations
         payload["scratchboard"] = self.scratchboard
+        payload["use_worktree"] = self.use_worktree
         if self.node_defaults is not None:
             payload["node_defaults"] = _normalize_node_defaults(self.node_defaults)
         if self.agent_defaults:

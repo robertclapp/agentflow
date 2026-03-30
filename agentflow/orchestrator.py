@@ -494,6 +494,33 @@ class Orchestrator:
             current_tick_number=periodic_tick_number,
             current_tick_started_at=periodic_tick_started_at,
         )
+        # Create git worktree if enabled (local nodes only)
+        worktree_dir = None
+        if pipeline.use_worktree and node.target.kind == "local":
+            from agentflow.worktree import create_worktree, is_git_repo
+            if is_git_repo(pipeline.working_path):
+                try:
+                    worktree_dir = create_worktree(pipeline.working_path, node_id, run_id)
+                    # Override the node target cwd to use the worktree
+                    from types import SimpleNamespace
+                    wt_target = SimpleNamespace(**{k: getattr(node.target, k) for k in node.target.model_fields})
+                    wt_target.cwd = str(worktree_dir)
+                    node = SimpleNamespace(
+                        id=node.id, agent=node.agent, prompt=node.prompt,
+                        target=wt_target, timeout_seconds=node.timeout_seconds,
+                        retries=node.retries, retry_backoff_seconds=node.retry_backoff_seconds,
+                        success_criteria=node.success_criteria, tools=node.tools,
+                        model=node.model, capture=node.capture, env=node.env,
+                        extra_args=node.extra_args, provider=node.provider,
+                        mcps=node.mcps, skills=node.skills, schedule=node.schedule,
+                        fanout_group=node.fanout_group, fanout_member=node.fanout_member,
+                        on_failure_restart=node.on_failure_restart,
+                        fanout_dependencies=getattr(node, 'fanout_dependencies', {}),
+                    )
+                except Exception as exc:
+                    await self._publish(run_id, "node_trace", node_id=node_id,
+                        trace={"kind": "warning", "title": f"Worktree failed: {exc}"})
+
         paths = self._build_paths(pipeline, run_id, node_id, node.target)
 
         # Inject scratchboard file location into prompt
@@ -671,6 +698,14 @@ class Orchestrator:
                 if stripped.startswith("SCRATCHBOARD:"):
                     content = stripped.removeprefix("SCRATCHBOARD:").strip()
                     await scratchboard.append(node_id, content)
+
+        # Clean up worktree
+        if worktree_dir is not None:
+            from agentflow.worktree import remove_worktree
+            try:
+                remove_worktree(pipeline.working_path, worktree_dir)
+            except Exception:
+                pass  # best effort cleanup
 
         await self.store.persist_run(run_id)
         if periodic_tick_number is not None:
